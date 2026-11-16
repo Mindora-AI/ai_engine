@@ -1,7 +1,22 @@
-torch
-transformers
-llama-cpp-python
-numpy
-scipy
-librosa
-soundfile
+# Core Deep Learning Framework
+torch>=2.0.0
+torchaudio>=2.0.0
+
+# LLM Inference (AfriqueQwen GGUF)
+# Note: On Windows without C++ build tools, install prebuilt wheels:
+# pip install llama-cpp-python --extra-index-url https://abetlen.github.io/llama-cpp-python/whl/cpu
+llama-cpp-python>=0.2.70
+jinja2>=3.1.0
+
+# Speech Recognition (Kinyarwanda Health ASR)
+transformers>=4.38.0
+
+# Audio Processing & Scientific Computing
+numpy>=1.24.0
+scipy>=1.10.0
+librosa>=0.10.0
+soundfile>=0.12.0
+
+# Model Management & Benchmarking
+huggingface_hub>=0.20.0
+psutil>=5.9.0

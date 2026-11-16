@@ -22,7 +22,10 @@ ac-ai-models/
 *.safetensors
 
 # Generated Audio and Output Artifacts
-outputs/
+outputs/*
+!outputs/tts_baseline_evaluation/
+outputs/tts_baseline_evaluation/*
+!outputs/tts_baseline_evaluation/manifest.json
 *.wav
 *.mp4
 *.mp3

@@ -1,15 +1,16 @@
-# MINDORA - Kinyarwanda Local Voice Assistant
+# MINDORA — Kinyarwanda Local Voice & Mental Health Assistant
 
-An integrated, fully local voice assistant powered by:
+An integrated, fully local multimodal voice assistant for Kinyarwanda mental-health support and conversational guidance:
+
 1. **ASR (Speech Recognition):** `ElvisTata2024/Kinyarwanda-Health-ASR` (HuggingFace Transformers pipeline).
-2. **LLM (Language Model):** `AfriqueQwen3.5-4B-Instruct` GGUF loaded locally via `llama-cpp-python`.
-3. **TTS (Text-to-Speech):** `KinyaFlex TTS` (`FlexKinyaTTS` PyTorch model).
+2. **LLM (Language Model):** `AfriqueQwen3.5-4B-Instruct-v1` GGUF loaded locally via `llama-cpp-python` with token-aware context management.
+3. **TTS (Text-to-Speech):** `KinyaFlex TTS` (`FlexKinyaTTS` MB-iSTFT-VITS2 PyTorch model via DeepKIN-AgAI).
 
 ---
 
-## 1. Architecture Overview
+## 1. System Architecture
 
-```
+```text
 [ Audio WAV File / Microphone ]
                │
                ▼
@@ -19,12 +20,12 @@ An integrated, fully local voice assistant powered by:
                │ Transcribed Text
                ▼
 ┌───────────────────────────────┐
-│     Conversation Manager      │ (History Trimming & System Prompt)
+│     Conversation Manager      │ (Token-Aware Context Budgeting & Eviction)
 └──────────────┬────────────────┘
-               │ Prompt + Context
+               │ Formatted Prompt (Jinja2 Chat Template, n_ctx=4096)
                ▼
 ┌───────────────────────────────┐
-│       AfriqueQwen LLM         │ (AfriqueQwen3.5-4B-Instruct GGUF)
+│       AfriqueQwen LLM         │ (AfriqueQwen3.5-4B-Instruct-v1 Q4_K_M GGUF)
 └──────────────┬────────────────┘
                │ Raw LLM Output
                ▼
@@ -39,69 +40,138 @@ An integrated, fully local voice assistant powered by:
                │ Kinyarwanda Text
                ▼
 ┌───────────────────────────────┐
-│        KinyaFlex TTS          │ (Synthesizes 24kHz 16-bit PCM WAV)
+│        KinyaFlex TTS          │ (Synthesizes 24kHz 16-bit Mono PCM WAV)
 └───────────────────────────────┘
 ```
 
 ---
 
-## 2. Project Directory & Model Paths
+## 2. Requirements & Prerequisites
 
-Local model weights are excluded from Git repository tracking via `.gitignore`. Before running, place model files in the following paths:
-
-- **AfriqueQwen LLM GGUF:**
-  `models/afriqueqwen/AfriqueQwen3.5-4B-Instruct-v1.i1-Q4_K_M.gguf`
-- **KinyaFlex TTS Checkpoint:**
-  `models/kinya-flex-tts/kinya_flex_tts_base_trained.pt`
-- **ASR Model:**
-  `ElvisTata2024/Kinyarwanda-Health-ASR` (HuggingFace repository cached locally on first run)
+- **Operating System:** Windows 10/11 or Linux (Ubuntu 20.04/22.04 LTS tested).
+- **Python Version:** Python **3.10**, **3.11**, or **3.12** (tested with Python 3.12.10).
+- **Hardware Profile:** Baseline runs on **CPU-only** (e.g. Intel Core i5/i7/i9 or AMD Ryzen).
+- **RAM:** Minimum 16 GB physical RAM recommended.
+- **Disk Space:**
+  - Git repository & dependencies: ~2 GB
+  - Model weights:
+    - AfriqueQwen GGUF (`Q4_K_M`): **2.86 GB**
+    - KinyaFlex TTS Checkpoint: **1.03 GB**
+    - ASR Cache (downloaded on first run): **~0.95 GB**
+  - Total recommended free disk space: **$\ge$ 8 GB**.
 
 ---
 
-## 3. Environment Setup & Installation
+## 3. Quick Start Installation (Cold Clone)
 
-Ensure Python 3.12 is active and install required dependencies:
+### Option A: Automated Setup (Recommended)
 
-```powershell
-# Create & activate virtual environment
-python -m venv .venv
-.\.venv\Scripts\Activate.ps1
+1. **Clone the repository:**
+   ```bash
+   git clone https://github.com/blessed-winner/MWIZERWA.git
+   cd MWIZERWA
+   ```
 
-# Install requirements
-pip install -r requirements.txt
-```
+2. **Run the environment setup script:**
+   - **On Windows:**
+     ```cmd
+     setup_env.bat
+     ```
+   - **On Linux / macOS:**
+     ```bash
+     chmod +x setup_env.sh
+     ./setup_env.sh
+     ```
+
+   *The setup script creates `.venv`, installs dependencies from `requirements.txt`, clones `ac-ai-models` (pinned to verified commit `c28db6b`), and installs `DeepKIN-AgAI` in editable mode.*
+
+3. **Download required model checkpoints:**
+   ```bash
+   # Activate environment if not already activated
+   # Windows: .\.venv\Scripts\activate
+   # Linux:   source .venv/bin/activate
+
+   python scripts/download_models.py
+   ```
+   *To inspect model presence and verify SHA-256 hashes without re-downloading, run:*
+   ```bash
+   python scripts/download_models.py --check
+   ```
+
+---
+
+### Option B: Manual Step-by-Step Installation
+
+If you prefer manual setup or are operating in a customized environment:
+
+1. **Create and activate a virtual environment:**
+   ```bash
+   python -m venv .venv
+   # Windows:
+   .\.venv\Scripts\activate
+   # Linux/macOS:
+   source .venv/bin/activate
+   ```
+
+2. **Install core Python dependencies:**
+   ```bash
+   pip install --upgrade pip
+   pip install -r requirements.txt
+   ```
+
+   > **Note for Windows Users without Visual Studio C++ Build Tools:**
+   > If `pip install llama-cpp-python` fails to compile, install a prebuilt CPU wheel:
+   > ```bash
+   > pip install llama-cpp-python --extra-index-url https://abetlen.github.io/llama-cpp-python/whl/cpu
+   > ```
+
+3. **Clone and install DeepKIN-AgAI:**
+   ```bash
+   git clone https://github.com/c4ir-rw/ac-ai-models.git ac-ai-models
+   git -C ac-ai-models checkout c28db6bfb6b80666583717c87e8edaa2a8f384d5
+   pip install -e ac-ai-models/DeepKIN-AgAI
+   ```
+
+4. **Download model checkpoints:**
+   ```bash
+   python scripts/download_models.py
+   ```
 
 ---
 
 ## 4. How to Run
 
-### Text Mode (Console Chat)
+### Interactive Unified Launcher
+The easiest way to explore all features:
+```bash
+python launch_menu.py
+```
+Provides an interactive terminal menu for Text Mode, Voice Mode, ASR testing, TTS testing, and Baseline Evaluation.
 
-Run text mode independently without loading audio models:
+---
 
+### Text Mode (Interactive Terminal Chat)
+Runs conversation with AfriqueQwen using the token-aware context manager without loading audio models:
 ```bash
 python run_assistant.py --mode text
 ```
+- `/clear`: Resets conversation history while preserving the `SYSTEM_PROMPT`.
+- `exit` or `quit`: Exits the session.
 
-**Commands in Text Mode:**
-- `/clear` – Resets conversation history while preserving the `SYSTEM_PROMPT`.
-- `exit` or `quit` – Exits the application.
+---
 
-### Voice Mode (End-to-End Pipeline)
-
-Run full voice mode pipeline:
-
+### Voice Mode (End-to-End Multimodal Pipeline)
+Runs the full ASR $\to$ LLM $\to$ TTS pipeline:
 ```bash
 python run_assistant.py --mode voice
 ```
 
-Or pass a specific WAV audio file for single-turn testing:
-
+Or pass a specific WAV audio file directly for non-interactive / headless execution:
 ```bash
-python run_assistant.py --mode voice --audio-file test.wav
+python run_assistant.py --mode voice --audio-file path/to/input.wav
 ```
 
-Speaker voices for KinyaFlex TTS can be specified with `--speaker`:
+Select a specific voice for KinyaFlex TTS with `--speaker`:
 - `0`: female_1 (default)
 - `1`: female_2
 - `2`: male
@@ -111,51 +181,69 @@ Example:
 python run_assistant.py --mode voice --audio-file test.wav --speaker 1
 ```
 
----
-
-## 5. Independent Model Testing
-
-### Testing ASR Independently
-
-```bash
-python scripts/test_asr.py
-```
-Or via engine:
-```bash
-python -c "from src.asr.asr_engine import ASREngine; print(ASREngine().transcribe_audio('test.wav'))"
-```
-
-### Testing TTS Independently
-
-```bash
-python scripts/test_kinya_flex.py
-```
-Or via engine:
-```bash
-python -c "from src.tts.tts_engine import TTSEngine; TTSEngine().synthesize_speech('Muraho neza, amakuru yanyu?')"
-```
-
-### Running Unit Tests
-
-Run the test suite (12 unit tests using mocks):
-
-```bash
-python -m unittest tests/test_assistant.py
-```
+*Note: Voice mode without `--audio-file` requires working microphone input via system audio capture.*
 
 ---
 
-## 6. Supported Languages & Behavior
+## 5. Testing & Evaluation
 
-- **ASR Input:** Supports Kinyarwanda speech recognition.
-- **LLM Output:** Can converse in **Kinyarwanda**, **English**, and **French**.
-- **TTS Output:** **Kinyarwanda only.** If the assistant responds in English or French, the response text is printed to the console, and speech synthesis is skipped with an informative notice.
-- **Therapeutic Guidance:** The system prompt instructs the assistant to listen, clarify, and understand before offering low-risk suggestions. It does not spam generic exercises when user mentions ordinary difficulties.
+### Run Automated Unit Tests
+Runs the full 24-test suite (token budgeting, Turn eviction, safety margin, error handling, pipeline mocks):
+```bash
+python -m unittest discover tests
+```
+
+### Run Baseline TTS Benchmark Evaluation
+Synthesizes the 18 standardized benchmark sentences across all 3 speaker voices (54 WAV files total) and outputs audio metrics and real-time factors to `outputs/tts_baseline_evaluation/manifest.json`:
+```bash
+python scripts/run_tts_baseline_evaluation.py
+```
+*Generated audio is saved locally to `outputs/tts_baseline_evaluation/*.wav` (ignored by Git); the benchmark metadata manifest is tracked.*
+
+### Test Individual Components Independently
+- **Test ASR:**
+  ```bash
+  python scripts/test_asr.py
+  ```
+- **Test TTS:**
+  ```bash
+  python scripts/test_kinya_flex.py
+  ```
+- **Validate LLM Context Management on Live Model:**
+  ```bash
+  python scripts/validate_token_context_real_model.py
+  ```
+- **Benchmark CPU Threads ($n=4, 6, 8$):**
+  ```bash
+  python scripts/benchmark_cpu_threads.py
+  ```
 
 ---
 
-## 7. Current Limitations & Troubleshooting
+## 6. Supported Languages & Assistant Behavior
 
-1. **CPU Inference:** High-resource CPU setup. LLM generation may take several seconds per turn.
-2. **Audio Hardware:** If recording via microphone fails on Windows, use `--audio-file <path.wav>` to pass audio recordings.
-3. **`llama-cpp-python` Build Issues:** If building `llama-cpp-python` from source fails due to system header conflicts (e.g. MSYS in `PATH`), remove MSYS directories from `PATH` before running `pip install llama-cpp-python`.
+- **ASR Input:** Supports spoken Kinyarwanda speech recognition.
+- **LLM Output:** Fully multilingual in **Kinyarwanda**, **English**, and **French**.
+- **TTS Output:** **Kinyarwanda only.** If the LLM generates a response in English or French, the response text is printed to the console, and speech synthesis is skipped with an informative notice.
+- **Mental Health Focus:** The system prompt instructs the assistant to listen actively, clarify gently, and validate emotional experiences before providing measured guidance.
+
+---
+
+## 7. Troubleshooting
+
+1. **`FileNotFoundError: AfriqueQwen model GGUF file not found` or `KinyaFlex TTS model file not found`:**
+   - Run `python scripts/download_models.py` to download missing weights from Hugging Face.
+   - Run `python scripts/download_models.py --check` to verify local file integrity.
+2. **`ImportError: deepkin package is required for KinyaFlex TTS`:**
+   - Ensure `ac-ai-models` has been cloned and installed:
+     ```bash
+     git clone https://github.com/c4ir-rw/ac-ai-models.git ac-ai-models
+     pip install -e ac-ai-models/DeepKIN-AgAI
+     ```
+3. **`llama-cpp-python` Compilation Errors:**
+   - On Windows, if MSYS2/MinGW or conflicting headers are in your system `PATH`, remove them before pip install, or install pre-built wheels:
+     ```bash
+     pip install llama-cpp-python --extra-index-url https://abetlen.github.io/llama-cpp-python/whl/cpu
+     ```
+4. **Microphone Audio Not Capturing:**
+   - Use `--audio-file <path.wav>` to pass recorded 16-bit PCM WAV audio directly to the assistant.
