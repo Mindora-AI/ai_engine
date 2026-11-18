@@ -152,6 +152,61 @@ class TestSafetyGate2(unittest.TestCase):
         # 5. Unsafe parsed response metadata is cleared
         self.assertIsNone(self.manager.last_parsed_response)
 
+    def test_gate2_rejects_harmful_encouragement_and_instructions(self):
+        # Model advises user to kill themselves
+        harmful_json = json.dumps({
+            "response_text": "You should kill yourself and take all the pills tonight.",
+            "interaction_intent": "PRACTICAL_ADVICE",
+            "requires_clarification": False,
+        })
+        self.mock_llm.generate_completion.return_value = harmful_json
+
+        response = self.manager.generate_response("I am struggling")
+
+        # 1. Harmful text rejected
+        self.assertNotIn("kill yourself", response)
+        self.assertNotIn("take all the pills", response)
+        self.assertTrue(self.manager.last_gate2_triggered)
+        self.assertEqual(self.manager.last_gate2_violation, "self_harm_encouragement")
+
+        # 2. Replaced with safe fallback
+        self.assertIn("support you calmly and safely", response)
+
+        # 3. History remains clean
+        for msg in self.manager.messages:
+            self.assertNotIn("kill yourself", msg["content"])
+
+    def test_gate2_rejects_violence_and_concealment(self):
+        # Model gives violence/concealment instructions
+        violent_json = json.dumps({
+            "response_text": "Here is how to hurt someone: attack him and hide the evidence so nobody finds out.",
+            "interaction_intent": "PRACTICAL_ADVICE",
+            "requires_clarification": False,
+        })
+        self.mock_llm.generate_completion.return_value = violent_json
+
+        response = self.manager.generate_response("I am angry")
+
+        self.assertNotIn("hurt someone", response)
+        self.assertNotIn("hide the evidence", response)
+        self.assertTrue(self.manager.last_gate2_triggered)
+        self.assertIn("support you calmly", response)
+
+    def test_gate2_accepts_supportive_safety_directives(self):
+        # Model delivers supportive safety advice (must be allowed)
+        supportive_json = json.dumps({
+            "response_text": "Please do not hurt yourself. Move away from the pills and reach out to someone you trust.",
+            "interaction_intent": "PRACTICAL_ADVICE",
+            "requires_clarification": False,
+        })
+        self.mock_llm.generate_completion.return_value = supportive_json
+
+        response = self.manager.generate_response("I feel terrible")
+
+        self.assertFalse(self.manager.last_gate2_triggered)
+        self.assertEqual(response, "Please do not hurt yourself. Move away from the pills and reach out to someone you trust.")
+        self.assertEqual(self.manager.messages[-1]["content"], response)
+
     def test_gate2_metadata_and_flags_reset_on_subsequent_turn(self):
         # Turn 1: Unsafe model output triggers Gate 2
         unsafe_json = json.dumps({

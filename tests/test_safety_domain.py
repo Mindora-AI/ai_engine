@@ -388,6 +388,24 @@ class TestCrisisResponseTemplates(unittest.TestCase):
         danger_fr = get_safety_response(ResponseSituation.ONGOING_PHYSICAL_DANGER, "fr")
         self.assertIn("lieu sûr", danger_fr)
 
+    def test_passive_death_wish_contains_direct_safety_question(self):
+        """Verify each passive death-wish template asks a direct, non-judgmental safety question."""
+        pdw_rw = get_safety_response(ResponseSituation.PASSIVE_DEATH_WISH, "rw")
+        self.assertIn("ese ubu waba uri gutekereza kwigirira nabi cyangwa kwiyahura?", pdw_rw)
+        # Avoids emergency hotline escalation
+        self.assertNotIn("112", pdw_rw)
+        self.assertNotIn("912", pdw_rw)
+
+        pdw_en = get_safety_response(ResponseSituation.PASSIVE_DEATH_WISH, "en")
+        self.assertIn("are you currently thinking about harming yourself or ending your life?", pdw_en)
+        self.assertNotIn("112", pdw_en)
+        self.assertNotIn("912", pdw_en)
+
+        pdw_fr = get_safety_response(ResponseSituation.PASSIVE_DEATH_WISH, "fr")
+        self.assertIn("êtes-vous actuellement en train de penser à vous faire du mal ou à mettre fin à vos jours ?", pdw_fr)
+        self.assertNotIn("112", pdw_fr)
+        self.assertNotIn("912", pdw_fr)
+
     def test_no_claims_of_calling_emergency_services(self):
         """Verify that no template claims the assistant will or can place emergency calls."""
         prohibited_markers = [

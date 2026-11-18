@@ -32,16 +32,19 @@ _CRISIS_TEMPLATES: Dict[Tuple[ResponseSituation, str], str] = {
     (ResponseSituation.PASSIVE_DEATH_WISH, "rw"): (
         "Ndakumva kandi ndakwitayeho. Biragaragara ko unaniwe cyane mu mutima. "
         "Nturi wenyine muri ibi bibazo, kandi ubuzima bwawe bufite agaciro gakomeye. "
-        "Niba wumva bibaye byinshi, gerageza kubiganiriza umuntu wiringira cyangwa umuganga."
+        "Mbwira mu bwisanzure: ese ubu waba uri gutekereza kwigirira nabi cyangwa kwiyahura? "
+        "Nyamuneka gerageza kubiganiriza umuntu wiringira cyangwa umuganga ushobora kugufasha."
     ),
     (ResponseSituation.PASSIVE_DEATH_WISH, "en"): (
         "I hear how exhausted you feel, and I want you to know that your life matters deeply. "
         "You do not have to carry this heavy burden alone. "
+        "Can you tell me directly: are you currently thinking about harming yourself or ending your life? "
         "Please reach out to someone you trust, a close friend, or a healthcare professional who can support you."
     ),
     (ResponseSituation.PASSIVE_DEATH_WISH, "fr"): (
         "Je comprends à quel point vous êtes épuisé et votre vie a une valeur précieuse. "
         "Vous ne devez pas porter ce lourd fardeau tout seul. "
+        "Dites-moi en toute franchise : êtes-vous actuellement en train de penser à vous faire du mal ou à mettre fin à vos jours ? "
         "N'hésitez pas à vous confier à une personne de confiance ou à un professionnel de santé."
     ),
 

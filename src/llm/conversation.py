@@ -6,6 +6,7 @@ from src.llm.response_parser import ParsedResponse, ResponseParsingError, safe_p
 from src.utils.language_detector import LanguageDetectionResult
 from src.safety.evaluator import SafetyEvaluator
 from src.safety.guardrail import SafetyGuardrail
+from src.safety.assistant_policy import AssistantSafetyValidator
 from src.safety.categories import ApplicationAction
 
 
@@ -76,6 +77,7 @@ class ConversationManager:
         system_prompt: str = SYSTEM_PROMPT,
         safety_evaluator: Optional[SafetyEvaluator] = None,
         safety_guardrail: Optional[SafetyGuardrail] = None,
+        assistant_validator: Optional[AssistantSafetyValidator] = None,
     ):
         self.llm = llm if llm is not None else AfriqueQwenLLM()
         self.max_turns = max_turns
@@ -84,7 +86,9 @@ class ConversationManager:
         self.last_parsed_response: Optional[ParsedResponse] = None
         self.safety_evaluator = safety_evaluator if safety_evaluator is not None else SafetyEvaluator()
         self.safety_guardrail = safety_guardrail if safety_guardrail is not None else SafetyGuardrail()
+        self.assistant_validator = assistant_validator if assistant_validator is not None else AssistantSafetyValidator()
         self.last_gate2_triggered: bool = False
+        self.last_gate2_violation: Optional[str] = None
 
         # Determine n_ctx from parameter, llm instance, or default 4096
         if n_ctx is not None:
@@ -119,6 +123,7 @@ class ConversationManager:
         ]
         self.last_parsed_response = None
         self.last_gate2_triggered = False
+        self.last_gate2_violation = None
 
     def get_available_budget(self) -> int:
         """
@@ -235,6 +240,7 @@ class ConversationManager:
         # DEFECT-02 fix: Reset per-turn metadata before any early returns, validation, or generation
         self.last_parsed_response = None
         self.last_gate2_triggered = False
+        self.last_gate2_violation = None
 
         user_text = user_text.strip() if user_text else ""
         if not user_text:
@@ -260,17 +266,43 @@ class ConversationManager:
                     f"Model response violated structured response contract: {parse_err}"
                 )
 
-            # Gate 2: Independently assess generated candidate response before committing
             candidate_text = parsed.response_text
+
+            # Gate 2 Check A: Validate assistant output against assistant safety policy
+            # Intercepts harmful advice, encouragement of harm, violence, poison, or concealment
+            assistant_val = self.assistant_validator.validate_assistant_response(candidate_text)
+            if not assistant_val.is_safe:
+                self.last_gate2_triggered = True
+                self.last_gate2_violation = assistant_val.violation_category
+                self.last_parsed_response = None
+
+                if detected_language and detected_language.is_reliable and detected_language.language in ("rw", "en", "fr"):
+                    target_lang = detected_language.language
+                else:
+                    inferred = self.safety_evaluator._infer_language(user_text) or self.safety_evaluator._infer_language(candidate_text)
+                    target_lang = inferred if inferred in ("rw", "en", "fr") else "rw"
+                safe_fallback = self.assistant_validator.get_safe_fallback(target_lang)
+
+                # Commit only the approved safe replacement response
+                self.messages = [self.messages[0]] + candidate_history + [
+                    {"role": "user", "content": user_text},
+                    {"role": "assistant", "content": safe_fallback},
+                ]
+                return safe_fallback
+
+            # Gate 2 Check B: Also evaluate candidate text using user-risk evaluator
+            # In case assistant echoes or discloses active crisis or self-harm in first-person
             assistant_assessment = self.safety_evaluator.evaluate(
                 candidate_text, conversation_context=candidate_messages
             )
             gate2_action = self.safety_guardrail.determine_action(assistant_assessment)
 
-            if gate2_action != ApplicationAction.NORMAL_CONVERSATION:
-                # Unsafe model output detected by Gate 2!
-                # Reject model output: do NOT commit candidate_text, do NOT leak parsed metadata
+            if gate2_action in (
+                ApplicationAction.SAFETY_FOCUSED_RESPONSE,
+                ApplicationAction.DETERMINISTIC_EMERGENCY_OVERRIDE,
+            ):
                 self.last_gate2_triggered = True
+                self.last_gate2_violation = assistant_assessment.category.value
                 self.last_parsed_response = None
 
                 target_lang = (
@@ -280,7 +312,7 @@ class ConversationManager:
                 )
                 safe_fallback = self.safety_guardrail.get_response(
                     assistant_assessment, gate2_action, target_lang
-                )
+                ) or self.assistant_validator.get_safe_fallback(target_lang)
 
                 # Commit only the approved deterministic replacement response
                 self.messages = [self.messages[0]] + candidate_history + [
@@ -290,6 +322,8 @@ class ConversationManager:
                 return safe_fallback
 
             # Gate 2 passed: safe model output
+            self.last_gate2_triggered = False
+            self.last_gate2_violation = None
             self.last_parsed_response = parsed
             final_response_text = candidate_text
 
@@ -304,6 +338,7 @@ class ConversationManager:
             # On error, ensure metadata remains cleared and state is not mutated
             self.last_parsed_response = None
             self.last_gate2_triggered = False
+            self.last_gate2_violation = None
             print(f"Error during LLM inference: {e}")
             raise e
 
@@ -320,6 +355,7 @@ class ConversationManager:
         """
         self.last_parsed_response = None
         self.last_gate2_triggered = False
+        self.last_gate2_violation = None
 
         user_text = user_text.strip() if user_text else ""
         if not user_text or not response_text:

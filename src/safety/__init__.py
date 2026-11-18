@@ -5,6 +5,7 @@ Chunk 4 Phase 1: Foundational safety domain models, emergency registry, and resp
 
 from src.safety.evaluator import SafetyEvaluator
 from src.safety.guardrail import SafetyGuardrail
+from src.safety.assistant_policy import AssistantSafetyValidator, AssistantSafetyResult
 from src.safety.categories import (
     ApplicationAction,
     ImmediacyLevel,
@@ -33,9 +34,11 @@ from src.safety.resources import (
 )
 
 __all__ = [
-    # Evaluator & Guardrail
+    # Evaluator & Guardrail & Assistant Output Policy
     "SafetyEvaluator",
     "SafetyGuardrail",
+    "AssistantSafetyValidator",
+    "AssistantSafetyResult",
     # Domain Models & Enums
     "SafetyCategory",
     "ApplicationAction",

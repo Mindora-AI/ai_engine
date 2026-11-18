@@ -8,6 +8,7 @@ from src.llm.conversation import ConversationManager
 from src.conversation.session import SessionState, TurnRequest, TurnResult, ConversationMode
 from src.utils.language_detector import LanguageDetector, LanguageDetectionResult
 from src.safety import SafetyEvaluator, SafetyGuardrail, ApplicationAction, SafetyAssessment
+from src.safety.assistant_policy import AssistantSafetyValidator
 
 
 class ConversationEngine:
@@ -31,12 +32,15 @@ class ConversationEngine:
         language_detector: Optional[LanguageDetector] = None,
         safety_evaluator: Optional[SafetyEvaluator] = None,
         safety_guardrail: Optional[SafetyGuardrail] = None,
+        assistant_validator: Optional[AssistantSafetyValidator] = None,
     ):
         self._safety_evaluator = safety_evaluator if safety_evaluator is not None else SafetyEvaluator()
         self._safety_guardrail = safety_guardrail if safety_guardrail is not None else SafetyGuardrail()
+        self._assistant_validator = assistant_validator if assistant_validator is not None else AssistantSafetyValidator()
         self._manager = manager if manager is not None else ConversationManager(
             safety_evaluator=self._safety_evaluator,
             safety_guardrail=self._safety_guardrail,
+            assistant_validator=self._assistant_validator,
         )
         self._state = state if state is not None else SessionState()
         self._detector = language_detector if language_detector is not None else LanguageDetector()
@@ -50,6 +54,11 @@ class ConversationEngine:
     def safety_guardrail(self) -> SafetyGuardrail:
         """Access the underlying SafetyGuardrail instance."""
         return self._safety_guardrail
+
+    @property
+    def assistant_validator(self) -> AssistantSafetyValidator:
+        """Access the underlying AssistantSafetyValidator instance."""
+        return self._assistant_validator
 
     @property
     def language_detector(self) -> LanguageDetector:
@@ -188,6 +197,7 @@ class ConversationEngine:
             "safety_action": safety_action.value,
             "gate1_triggered": False,
             "gate2_triggered": getattr(self._manager, "last_gate2_triggered", False),
+            "gate2_violation": getattr(self._manager, "last_gate2_violation", None),
         }
         last_parsed = getattr(self._manager, "last_parsed_response", None)
         if last_parsed is not None:
