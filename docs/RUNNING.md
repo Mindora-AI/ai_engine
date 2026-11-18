@@ -93,11 +93,11 @@ You type text; the assistant generates a conversational response and synthesizes
 ```powershell
 python run_assistant.py --mode text-voice --speaker 0
 ```
-- If the response is in Kinyarwanda, speech is synthesized and saved to `output.wav`.
-- If the response is in English or French, TTS synthesis is safely bypassed and marked in the console (`[TTS Info] Speech output skipped`).
+- Response language is detected on the **assistant reply**; KinyaFlex synthesizes `rw`, Piper synthesizes `en` and `fr`.
+- WAV output is saved to `outputs/tts_responses/latest_response.wav` (updated each turn).
 
 #### Mode 3: Voice-to-Voice Full Pipeline (`--mode voice`)
-Full voice round-trip: audio transcription via ASR, conversational generation via AfriqueQwen, and neural speech synthesis via KinyaFlex.
+Full voice round-trip: ASR → AfriqueQwen → trilingual TTS router (KinyaFlex / Piper).
 - **Single-turn file test:**
   ```powershell
   python run_assistant.py --mode voice --audio-file test.wav --speaker 0
@@ -150,7 +150,8 @@ When `ASREngine` runs:
 ### 5.3 TTS Synthesis Indicators
 When `TTSEngine` runs:
 ```text
-[4/4] Synthesizing speech with KinyaFlex TTS...
-[TTS Audio Ready] Saved at: output.wav
+[TTS Router] Routing to Piper for language 'en'...
+[Piper TTS] Synthesized audio saved to: ...\outputs\tts_responses\latest_response.wav
+[TTS Audio Ready] Saved at: ...
 ```
-- Synthesized output is written to `output.wav` at the repository root as 24kHz, 16-bit Mono PCM audio.
+- KinyaFlex output: 24 kHz mono PCM. Piper output: 22.05 kHz mono PCM (voice-dependent).

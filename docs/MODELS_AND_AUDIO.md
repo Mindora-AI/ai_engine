@@ -31,34 +31,55 @@ python scripts/benchmark_cpu_threads.py
 
 ---
 
-## 2. Text-to-Speech Engine (TTS)
+## 2. Text-to-Speech Engines (TTS)
 
-### 2.1 Model Specification
-- **Model Architecture:** `FlexKinyaTTS` (Multi-Band iSTFT VITS2) via `DeepKIN-AgAI`.
-- **Checkpoint:** `models/kinya-flex-tts/kinya_flex_tts_base_trained.pt` (1.03 GB).
-- **Audio Output Format:** 24 kHz, 16-bit Mono PCM WAV.
+MWIZERWA uses **two** synthesis engines selected automatically from the **final assistant response language**:
 
-### 2.2 Local Multi-Speaker Support
-KinyaFlex TTS supports three distinct speaker embeddings:
-- **Speaker 0:** Female Voice 1 (Default conversational voice).
-- **Speaker 1:** Female Voice 2.
-- **Speaker 2:** Male Voice.
+| Response language | Engine | Voice / checkpoint |
+| :--- | :--- | :--- |
+| `rw` (Kinyarwanda) | KinyaFlex | `models/kinya-flex-tts/kinya_flex_tts_base_trained.pt` |
+| `en` (English) | Piper | `models/piper/en_US-ljspeech-medium/` |
+| `fr` (French) | Piper | `models/piper/fr_FR-siwis-medium/` |
 
-Select speaker via CLI:
+Implementation: `src/tts/tts_router.py` (`TTSRouter`) exposed as `TTSEngine` in `src/tts/tts_engine.py`.
+
+### 2.1 KinyaFlex (Kinyarwanda)
+- **Architecture:** `FlexKinyaTTS` (Multi-Band iSTFT VITS2) via `DeepKIN-AgAI`.
+- **Checkpoint:** `models/kinya-flex-tts/kinya_flex_tts_base_trained.pt` (~1.03 GB).
+- **Audio format:** 24 kHz, 16-bit mono PCM WAV.
+- **Speakers:** `0` = female 1 (default), `1` = female 2, `2` = male.
+
 ```powershell
 python run_assistant.py --mode text-voice --speaker 1
 ```
 
-### 2.3 Language Boundaries and Synthesis Gating
-> [!IMPORTANT]
-> `KinyaFlex TTS` is trained **exclusively** on Kinyarwanda phonology and orthography.  
-> It does not support English or French pronunciation.
+### 2.2 Piper (English / French)
+- **Runtime:** `piper-tts` Python package ([OHF-Voice/piper1-gpl](https://github.com/OHF-Voice/piper1-gpl)) with `onnxruntime`.
+- **Voices (Hugging Face `rhasspy/piper-voices`):**
+  - English: `en_US-ljspeech-medium` (22.05 kHz)
+  - French: `fr_FR-siwis-medium` (22.05 kHz)
+- **Expected layout:**
 
-When MWIZERWA generates a response in English or French:
-1. `TTSEngine.synthesize_speech()` evaluates the text language using `LanguageDetector`.
-2. Non-Kinyarwanda responses safely bypass TTS synthesis.
-3. The text is displayed cleanly in the console with `[TTS Info] Speech output skipped`.
-4. No corrupt, noisy, or distorted audio is generated.
+```text
+models/piper/
+├── en_US-ljspeech-medium/
+│   ├── en_US-ljspeech-medium.onnx
+│   └── en_US-ljspeech-medium.onnx.json
+└── fr_FR-siwis-medium/
+    ├── fr_FR-siwis-medium.onnx
+    └── fr_FR-siwis-medium.onnx.json
+```
+
+Download:
+```powershell
+python scripts/download_models.py --model piper
+```
+
+### 2.3 Routing and safety
+1. `resolve_response_language()` runs `LanguageDetector` on the **assistant response text** (not the user message).
+2. Reliable `rw` → KinyaFlex; reliable `en` / `fr` → Piper.
+3. Uncertain or unsupported languages raise `UnsupportedTTSLanguageError` — audio is **not** sent to the wrong engine.
+4. Default synthesis output is `outputs/tts_responses/latest_response.wav` (KinyaFlex and Piper). Pass `output_path` only for tests or custom locations.
 
 ---
 

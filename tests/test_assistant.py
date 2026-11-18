@@ -142,17 +142,37 @@ class TestAssistantIntegration(unittest.TestCase):
         cleaned2 = clean_response(raw_text2)
         self.assertEqual(cleaned2, "Iyi ni Kinyarwanda.")
 
-    def test_09_unsupported_languages_handled(self):
-        """9. Test unsupported speech output languages (English/French) are skipped for TTS."""
-        mock_tts = MagicMock(spec=TTSEngine)
-        # Real detect_language should identify English
+    def test_09_english_routes_to_piper_not_kinya(self):
+        """9. English responses route to Piper via TTS router (not KinyaFlex skip)."""
         lang_en = detect_language("Hello, how are you doing today?")
         self.assertEqual(lang_en, "english")
 
-        # Test TTSEngine logic with English text
         engine = TTSEngine()
-        result = engine.synthesize_speech("Hello, how are you today?", check_lang=True)
-        self.assertIsNone(result)
+        from tempfile import gettempdir
+        from pathlib import Path as P
+        import wave
+
+        def _stub_piper(text, language, output_path):
+            p = Path(output_path)
+            p.parent.mkdir(parents=True, exist_ok=True)
+            with wave.open(str(p), "wb") as wf:
+                wf.setnchannels(1)
+                wf.setsampwidth(2)
+                wf.setframerate(22050)
+                wf.writeframes(b"\x00\x00" * 10)
+            return str(p.resolve())
+
+        engine._piper.synthesize_speech = MagicMock(side_effect=_stub_piper)
+        engine._kinya.synthesize_speech = MagicMock()
+
+        out_path = P(gettempdir()) / "assistant_en.wav"
+        result = engine.synthesize_speech(
+            "Hello, how are you today?",
+            output_path=out_path,
+        )
+        engine._piper.synthesize_speech.assert_called_once()
+        engine._kinya.synthesize_speech.assert_not_called()
+        self.assertEqual(result, str(out_path.resolve()))
 
     def test_10_errors_do_not_append_fabricated_assistant_response(self):
         """10. Test LLM errors do not append bad messages to history."""

@@ -61,17 +61,32 @@ This document lists common issues, error messages, root causes, and verified res
 
 ## 3. Audio and Multimodal Pipeline Issues
 
-### 3.1 `[TTS Info] Speech output skipped`
-- **Symptom:** The assistant prints a response in English or French, but no audio is produced.
-- **Cause:** **Expected Behavior.** `KinyaFlex TTS` is trained exclusively for Kinyarwanda phonology. Non-Kinyarwanda text is intentionally prevented from passing to the Kinyarwanda synthesizer to avoid garbled speech.
-- **Resolution:** None needed. If Kinyarwanda audio is desired, interact with the assistant in Kinyarwanda.
+### 3.1 `[TTS Error]` / missing Piper or KinyaFlex models
+- **Symptom:** Synthesis fails with `FileNotFoundError` or `download_models.py` in the message.
+- **Cause:** Model weights are not present under `models/` (directory is gitignored).
+- **Resolution (PowerShell):**
+  ```powershell
+  .\.venv\Scripts\activate
+  python scripts/download_models.py --check
+  python scripts/download_models.py
+  python scripts/download_models.py --model piper
+  ```
+- **Symptom:** `UnsupportedTTSLanguageError` — no audio, message about uncertain language.
+- **Cause:** Response text language could not be classified reliably; routing refuses the wrong engine.
+- **Resolution:** Rephrase or ensure the assistant response is clearly in `rw`, `en`, or `fr`.
 
-### 3.2 ASR First-Run Download Hangs
+### 3.2 `piper-tts` / `onnxruntime` import errors
+- **Resolution:**
+  ```powershell
+  pip install piper-tts onnxruntime
+  ```
+
+### 3.3 ASR First-Run Download Hangs
 - **Symptom:** `run_assistant.py --mode voice` pauses at `[1/4] Transcribing audio with ASR...` for several minutes.
 - **Cause:** First-time download of `ElvisTata2024/Kinyarwanda-Health-ASR` (~0.95 GB) from Hugging Face Hub.
 - **Resolution:** Allow the initial download to complete. Subsequent runs load directly from the local Hugging Face cache (`~/.cache/huggingface/`).
 
-### 3.3 ASR Returns Empty or Silent Transcription
+### 3.4 ASR Returns Empty or Silent Transcription
 - **Symptom:** `[ASR Warning] Transcription empty or silent. Skipping LLM generation.`
 - **Cause:** Audio file is silent, below volume threshold, or in an unsupported format (e.g. non-16kHz, stereo, corrupted header).
 - **Resolution:**

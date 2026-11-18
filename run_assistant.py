@@ -12,7 +12,7 @@ from src.llm.conversation import ConversationManager
 from src.conversation.session import TurnRequest, TurnResult, ConversationMode
 from src.conversation.engine import ConversationEngine
 from src.asr.asr_engine import ASREngine
-from src.tts.tts_engine import TTSEngine
+from src.tts.tts_engine import TTSEngine, UnsupportedTTSLanguageError, TTSSynthesisError
 
 
 def _ensure_engine(target: Union[ConversationEngine, ConversationManager]) -> ConversationEngine:
@@ -73,7 +73,7 @@ def run_text_voice_mode(
 ):
     """
     Runs text-to-voice mode:
-    User types text -> ConversationEngine -> AfriqueQwen LLM -> KinyaFlex TTS -> WAV Output.
+    User types text -> ConversationEngine -> AfriqueQwen LLM -> TTS router -> WAV Output.
     ASR is skipped entirely.
     """
     conv_engine = _ensure_engine(engine)
@@ -121,15 +121,19 @@ def run_text_voice_mode(
             continue
 
         # Step 2: Synthesize speech
-        print("[2/2] Synthesizing speech with KinyaFlex TTS...")
+        print("[2/2] Synthesizing speech (KinyaFlex / Piper routing)...")
         try:
             audio_output = tts.synthesize_speech(response)
             if audio_output:
                 print(f"[TTS Audio Ready] Saved at: {audio_output}\n")
             else:
-                print("[TTS Info] Speech output skipped (response not in Kinyarwanda or empty).\n")
-        except Exception as e:
+                print("[TTS Info] Speech output skipped (empty response).\n")
+        except UnsupportedTTSLanguageError as e:
+            print(f"[TTS Error] Cannot route response language safely: {e}\n")
+        except TTSSynthesisError as e:
             print(f"[TTS Error] Speech synthesis failed: {e}\n")
+        except Exception as e:
+            print(f"[TTS Error] Unexpected synthesis failure: {e}\n")
 
 
 def run_voice_mode(
@@ -139,7 +143,7 @@ def run_voice_mode(
 ):
     """
     Runs voice mode pipeline:
-    Audio Input -> ASR -> Conversation Engine -> AfriqueQwen -> Response Cleaner -> KinyaFlex TTS -> WAV Output
+    Audio Input -> ASR -> Conversation Engine -> AfriqueQwen -> TTS router -> WAV Output
     """
     conv_engine = _ensure_engine(engine)
 
@@ -276,22 +280,26 @@ def transcribe_and_respond(
         return
 
     if tts is not None:
-        print("[4/4] Synthesizing speech with KinyaFlex TTS...")
+        print("[4/4] Synthesizing speech (KinyaFlex / Piper routing)...")
         try:
             audio_output = tts.synthesize_speech(response)
             if audio_output:
                 print(f"[TTS Audio Ready] Saved at: {audio_output}\n")
             else:
-                print("[TTS Info] Speech output skipped (language non-Kinyarwanda or empty).\n")
-        except Exception as e:
+                print("[TTS Info] Speech output skipped (empty response).\n")
+        except UnsupportedTTSLanguageError as e:
+            print(f"[TTS Error] Cannot route response language safely: {e}\n")
+        except TTSSynthesisError as e:
             print(f"[TTS Error] Speech synthesis failed: {e}\n")
+        except Exception as e:
+            print(f"[TTS Error] Unexpected synthesis failure: {e}\n")
     else:
         print("[Voice-to-Text] Turn complete. (Speech synthesis skipped in this mode).\n")
 
 
 def main():
     parser = argparse.ArgumentParser(
-        description="Local Voice Assistant (ASR + AfriqueQwen LLM + KinyaFlex TTS)"
+        description="Local Voice Assistant (ASR + AfriqueQwen + KinyaFlex/Piper TTS)"
     )
     parser.add_argument(
         "--mode",
@@ -316,7 +324,7 @@ def main():
         "--speaker",
         type=int,
         default=0,
-        help="Speaker ID for KinyaFlex TTS (0=female_1, 1=female_2, 2=male). Default: 0",
+        help="KinyaFlex speaker ID for Kinyarwanda responses (0=female_1, 1=female_2, 2=male). Default: 0",
     )
 
     args = parser.parse_args()

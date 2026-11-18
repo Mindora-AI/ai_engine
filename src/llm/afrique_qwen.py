@@ -12,6 +12,22 @@ DEFAULT_MODEL_PATH = (
 )
 
 
+# Structured Response JSON Schema for GBNF grammar-constrained generation.
+# Enforces exact presence of response_text, interaction_intent, and requires_clarification.
+STRUCTURED_RESPONSE_SCHEMA = {
+    "type": "object",
+    "properties": {
+        "response_text": {"type": "string"},
+        "interaction_intent": {
+            "type": "string",
+            "enum": ["LISTENING", "REFLECTION", "PRACTICAL_ADVICE", "UNCLEAR"],
+        },
+        "requires_clarification": {"type": "boolean"},
+    },
+    "required": ["response_text", "interaction_intent", "requires_clarification"],
+}
+
+
 class AfriqueQwenLLM:
     """
     Wrapper for local AfriqueQwen3.5 GGUF model using llama-cpp-python.
@@ -191,16 +207,32 @@ class AfriqueQwenLLM:
 
     def generate_completion(self, messages: List[Dict[str, str]]) -> str:
         """
-        Generates a completion from a list of chat messages using the model's chat template.
+        Generates a completion from a list of chat messages using the model's chat template,
+        strictly constrained by the structured response contract schema via GBNF grammar.
         """
         llm = self.load_model()
-        response = llm.create_chat_completion(
-            messages=messages,
-            temperature=self.temperature,
-            top_p=self.top_p,
-            max_tokens=self.max_tokens,
-            response_format={"type": "json_object"},
-        )
+        response_fmt = {
+            "type": "json_object",
+            "schema": STRUCTURED_RESPONSE_SCHEMA,
+        }
+        try:
+            response = llm.create_chat_completion(
+                messages=messages,
+                temperature=self.temperature,
+                top_p=self.top_p,
+                max_tokens=self.max_tokens,
+                response_format=response_fmt,
+            )
+        except Exception as e:
+            # Fallback to generic json_object if schema compilation is unsupported
+            print(f"[LLM Warning] Schema grammar completion failed ({e}), falling back to generic json_object.")
+            response = llm.create_chat_completion(
+                messages=messages,
+                temperature=self.temperature,
+                top_p=self.top_p,
+                max_tokens=self.max_tokens,
+                response_format={"type": "json_object"},
+            )
 
         choices = response.get("choices", [])
         if not choices:

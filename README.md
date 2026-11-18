@@ -1,5 +1,7 @@
 # MWIZERWA AI — Multilingual Supportive Conversational Companion
 
+**Repository:** [Mindora-AI/ai_engine](https://github.com/Mindora-AI/ai_engine)
+
 MWIZERWA AI is an offline-capable, multimodal, and multilingual conversational companion designed to provide attentive emotional presence, supportive listening, guided reflection, and deterministic wellness exercises across Kinyarwanda, English, and French.
 
 > [!IMPORTANT]
@@ -18,7 +20,7 @@ MWIZERWA AI provides:
   - **Gate 1 (Pre-Inference):** Deterministic emergency detection (suicide, self-harm, severe crisis) that immediately bypasses LLM inference and returns localized crisis resources.
   - **Gate 2 (Post-Inference):** Independent safety validation of model outputs intercepting toxic, dangerous, or medicalized responses before user presentation.
 - **Deterministic Wellness Exercises:** Offline, structured step-by-step guidance for Breathing, 5-4-3-2-1 Sensory Grounding, Thought Reflection, Self-Compassion, and Gratitude Anchoring.
-- **Full Voice Pipeline:** End-to-end speech recognition (Kinyarwanda Health ASR), local LLM inference (AfriqueQwen3.5-4B GGUF), and multi-speaker neural speech synthesis (KinyaFlex TTS).
+- **Full Voice Pipeline:** End-to-end speech recognition (Kinyarwanda Health ASR), local LLM inference (AfriqueQwen3.5-4B GGUF), and **trilingual speech synthesis** via KinyaFlex (Kinyarwanda) and Piper (English / French).
 
 ---
 
@@ -26,11 +28,11 @@ MWIZERWA AI provides:
 
 | Language | Text Interaction | Speech Recognition (ASR) | Speech Synthesis (TTS) | Wellness Exercises | Safety Overrides |
 | :--- | :---: | :---: | :---: | :---: | :---: |
-| **Kinyarwanda (`rw`)** | Yes | Yes (Native) | Yes (3 Speakers) | Yes (All 5 Categories) | Yes (112, Police, Support) |
-| **English (`en`)** | Yes | English Audio | Non-Kinya Skipped* | Yes (All 5 Categories) | Yes (911/112/Hotlines) |
-| **French (`fr`)** | Yes | French Audio | Non-Kinya Skipped* | Yes (All 5 Categories) | Yes (112/SAMU 912) |
+| **Kinyarwanda (`rw`)** | Yes | Yes (Native) | Yes — KinyaFlex (3 speakers) | Yes (All 5 Categories) | Yes (112, Police, Support) |
+| **English (`en`)** | Yes | English Audio | Yes — Piper (`en_US-ljspeech-medium`) | Yes (All 5 Categories) | Yes (911/112/Hotlines) |
+| **French (`fr`)** | Yes | French Audio | Yes — Piper (`fr_FR-siwis-medium`) | Yes (All 5 Categories) | Yes (112/SAMU 912) |
 
-*\*Note on TTS:* Current neural TTS (`KinyaFlex TTS`) is specialized exclusively for Kinyarwanda phonology. English and French responses are displayed in text mode; TTS synthesis is safely bypassed when non-Kinyarwanda responses are generated.
+**TTS routing:** The assistant detects the language of the **final response text** and routes synthesis automatically — KinyaFlex for `rw`, Piper for `en` and `fr`. The same router is used for text-to-voice and voice-to-voice modes.
 
 ---
 
@@ -38,7 +40,7 @@ MWIZERWA AI provides:
 
 - **Large Language Model (LLM):** `AfriqueQwen3.5-4B-Instruct-v1` quantized at `Q4_K_M` (2.86 GB GGUF) running locally via `llama-cpp-python` on CPU or GPU.
 - **Automatic Speech Recognition (ASR):** `ElvisTata2024/Kinyarwanda-Health-ASR` via HuggingFace `transformers` pipeline.
-- **Text-to-Speech (TTS):** `KinyaFlex TTS` (`FlexKinyaTTS` MB-iSTFT-VITS2 architecture) with 3 local speaker identities.
+- **Text-to-Speech (TTS):** Dual-engine routing — `KinyaFlex TTS` (`FlexKinyaTTS`, Kinyarwanda, 3 speakers) and [Piper TTS](https://github.com/OHF-Voice/piper1-gpl) (English / French ONNX voices).
 - **Context Management:** Token-aware sliding window with deterministic system prompt preservation (`n_ctx=4096`, `max_tokens=512`).
 - **Safety Architecture:** Deterministic regex-based evaluator + Guardrail policy + Assistant output validator.
 - **Exercise Engine:** Pre-authored trilingual static content catalog with deterministic lifecycle state machine.
@@ -48,7 +50,7 @@ MWIZERWA AI provides:
 ## 4. Repository Structure
 
 ```text
-kinyarwanda-tts-evaluation/
+ai_engine/
 ├── ac-ai-models/              # Submodule: DeepKIN-AgAI TTS architecture
 ├── docs/                      # Comprehensive technical documentation
 │   ├── ARCHITECTURE.md        # Complete architectural specification & pipeline flow
@@ -60,7 +62,8 @@ kinyarwanda-tts-evaluation/
 │   └── TROUBLESHOOTING.md     # Common issues and verified resolutions
 ├── models/                    # Model weights directory (gitignored)
 │   ├── afriqueqwen/           # AfriqueQwen GGUF model file
-│   └── kinya-flex-tts/        # KinyaFlex TTS PyTorch weights & metadata
+│   ├── kinya-flex-tts/        # KinyaFlex TTS PyTorch weights & metadata
+│   └── piper/                 # Piper ONNX voices (en_US-ljspeech-medium, fr_FR-siwis-medium)
 ├── notebooks/                 # Exploratory and fine-tuning Colab notebooks
 ├── outputs/                   # Generated evaluation outputs and manifests
 │   ├── prosody_reference_set/ # Reference dataset manifests and inspection reports
@@ -82,7 +85,7 @@ kinyarwanda-tts-evaluation/
 │   ├── exercises/             # Exercise catalog, models, recommender, and lifecycle
 │   ├── llm/                   # ConversationManager, prompts, cleaner, parser
 │   ├── safety/                # Gate 1 evaluator, Gate 2 assistant policy, guardrails
-│   ├── tts/                   # KinyaFlex TTS synthesis engine wrapper
+│   ├── tts/                   # TTS router, KinyaFlex engine, Piper engine
 │   └── utils/                 # Tri-lingual language detector and helpers
 ├── tests/                     # 298 Automated regression and behavioral tests
 │   ├── behavioral/            # Multi-turn behavioral fidelity test suite (28 tests)
@@ -100,10 +103,10 @@ kinyarwanda-tts-evaluation/
 
 ### 5.1 Installation
 
-1. **Clone the repository:**
-   ```bash
-   git clone https://github.com/blessed-winner/MWIZERWA.git
-   cd MWIZERWA
+1. **Clone the repository (Windows PowerShell):**
+   ```powershell
+   git clone https://github.com/Mindora-AI/ai_engine.git
+   cd ai_engine
    ```
 
 2. **Run the automated environment setup:**
@@ -117,10 +120,18 @@ kinyarwanda-tts-evaluation/
      ./setup_env.sh
      ```
 
-3. **Download required model assets:**
+3. **Download required model assets** (LLM, KinyaFlex, and Piper voices):
    ```powershell
    .\.venv\Scripts\activate
    python scripts/download_models.py
+   ```
+   Piper-only download:
+   ```powershell
+   python scripts/download_models.py --model piper
+   ```
+   Verify without downloading:
+   ```powershell
+   python scripts/download_models.py --check
    ```
 
 ### 5.2 Running the Application
@@ -144,16 +155,18 @@ Or run directly via `run_assistant.py`:
   python run_assistant.py --mode voice --audio-file test.wav --speaker 0
   ```
 
+Voice replies are written to `outputs/tts_responses/latest_response.wav` (KinyaFlex or Piper, depending on response language).
+
 ### 5.3 Running the Test Suite
 
-Execute the complete regression and behavioral test suite (298 tests):
 ```powershell
 python -m unittest discover tests
+python -m unittest tests.test_tts_routing
 ```
 
-Execute behavioral tests specifically:
+Or with pytest:
 ```powershell
-python -m unittest discover tests/behavioral
+pytest tests/test_tts_routing.py -q
 ```
 
 ---
@@ -161,10 +174,10 @@ python -m unittest discover tests/behavioral
 ## 6. Complete Documentation Index
 
 For in-depth guides, consult the dedicated documentation files:
-- [Installation and Setup Guide](file:///docs/INSTALLATION.md)
-- [Running MWIZERWA](file:///docs/RUNNING.md)
-- [Architecture Guide](file:///docs/ARCHITECTURE.md)
-- [Testing Guide](file:///docs/TESTING.md)
-- [Model and TTS Guide](file:///docs/MODELS_AND_AUDIO.md)
-- [Troubleshooting Guide](file:///docs/TROUBLESHOOTING.md)
-- [Developer Handover](file:///docs/DEVELOPER_HANDOVER.md)
+- [Installation and Setup Guide](docs/INSTALLATION.md)
+- [Running MWIZERWA](docs/RUNNING.md)
+- [Architecture Guide](docs/ARCHITECTURE.md)
+- [Testing Guide](docs/TESTING.md)
+- [Model and TTS Guide](docs/MODELS_AND_AUDIO.md)
+- [Troubleshooting Guide](docs/TROUBLESHOOTING.md)
+- [Developer Handover](docs/DEVELOPER_HANDOVER.md)

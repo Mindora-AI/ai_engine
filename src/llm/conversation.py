@@ -67,11 +67,14 @@ def _format_per_turn_system_prompt(
             if detected_language.is_mixed:
                 context_lines.append(
                     f"User Language: Mixed (primarily {lang_name}). "
-                    f"Respond naturally, honoring their meaning and primary language."
+                    f"You MUST respond in {lang_name}. Honor their meaning and preserve the primary language."
                 )
             else:
+                other_langs = [n for n in ("Kinyarwanda", "English", "French") if n != lang_name]
                 context_lines.append(
-                    f"User Language: {lang_name}. Respond naturally in {lang_name}."
+                    f"User Language: {lang_name}. "
+                    f"You MUST write your entire response_text in {lang_name}. "
+                    f"Do NOT respond in {other_langs[0]} or {other_langs[1]}."
                 )
 
     # 2. Mode directive (resolve enum or string key to directive text)
