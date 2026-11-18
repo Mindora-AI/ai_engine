@@ -7,6 +7,7 @@ from dataclasses import dataclass, field
 from enum import Enum
 from typing import Dict, Any, Optional
 from src.utils.language_detector import LanguageDetectionResult
+from src.exercises.models import ExerciseSessionState
 
 
 class ConversationMode(str, Enum):
@@ -28,6 +29,7 @@ class SessionState:
     """
     mode: ConversationMode = ConversationMode.NORMAL
     metadata: Dict[str, Any] = field(default_factory=dict)
+    exercise_state: ExerciseSessionState = field(default_factory=ExerciseSessionState)
 
 
 @dataclass
