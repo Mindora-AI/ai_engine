@@ -348,17 +348,38 @@ class ConversationEngine:
         # -------------------------------------------------------------------
         # 4. Standard Conversational Flow (LLM + Gate 2 Validation)
         # -------------------------------------------------------------------
+
+        # Determine ambiguous-language flag for first-turn unestablished sessions
+        is_ambiguous_language = (
+            request.language is None
+            and not lang_result.is_reliable
+            and self._state.exercise_state.established_language is None
+        )
+
+        # Carry forward requires_clarification from previous turn's parsed response
+        last_parsed_prev = getattr(self._manager, "last_parsed_response", None)
+        prev_requires_clarification = (
+            last_parsed_prev.requires_clarification if last_parsed_prev else False
+        )
+
         response_text = self._manager.generate_response(
             cleaned_text,
             detected_language=lang_result,
+            mode=self._state.mode,
+            ambiguous_language=is_ambiguous_language,
+            requires_clarification=prev_requires_clarification,
         )
 
         last_parsed = getattr(self._manager, "last_parsed_response", None)
         intent = last_parsed.interaction_intent if last_parsed else None
 
-        # Check Contextual Recommendation Eligibility (suppressed if language is unresolved)
+        # Check Contextual Recommendation Eligibility
+        # Suppressed when: language is unresolved, or current turn flagged requires_clarification
+        current_requires_clarification = (
+            last_parsed.requires_clarification if last_parsed else False
+        )
         life_res = None
-        if target_lang is not None:
+        if target_lang is not None and not current_requires_clarification:
             rec_decision = self._recommender.evaluate_recommendation(
                 cleaned_text, intent, ex_state, target_lang
             )

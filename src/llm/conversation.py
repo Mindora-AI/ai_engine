@@ -10,39 +10,89 @@ from src.safety.assistant_policy import AssistantSafetyValidator
 from src.safety.categories import ApplicationAction
 
 
+# Mode-specific delivery directives injected ephemerally per turn.
+# Keyed by mode .value string to avoid circular import with session module.
+_MODE_DIRECTIVES = {
+    "gentle": (
+        "Delivery Mode: GENTLE — Warm, patient, unhurried phrasing. "
+        "Prioritize emotional acknowledgment; avoid pressure or forceful suggestions."
+    ),
+    "normal": (
+        "Delivery Mode: NORMAL — Natural, balanced conversational tone. "
+        "Balanced emotional acknowledgment and practical support without being overly soft or forceful."
+    ),
+    "motivational": (
+        "Delivery Mode: MOTIVATIONAL — Encouraging, constructive, and action-oriented when appropriate. "
+        "Help recognize manageable next steps without pressure, empty slogans, or dismissive positivity."
+    ),
+}
+
+
 def _format_per_turn_system_prompt(
     base_prompt: str,
     detected_language: Optional[LanguageDetectionResult],
+    mode: Optional[Any] = None,
+    ambiguous_language: bool = False,
+    requires_clarification: bool = False,
 ) -> str:
     """
-    Constructs an ephemeral, per-turn system prompt incorporating reliable language context.
+    Constructs an ephemeral, per-turn system prompt incorporating:
+    - Reliable language context from per-turn detection.
+    - Active conversation delivery mode (GENTLE / NORMAL / MOTIVATIONAL).
+    - Ambiguous-language guidance for unestablished first-turn sessions.
+    - Clarification continuation when the previous turn flagged requires_clarification.
+
     The base prompt remains unchanged in committed conversation history.
+    All injected directives are ephemeral and are not committed to self.messages[0].
     """
-    if detected_language is None or not detected_language.is_reliable:
-        return base_prompt
+    parts = [base_prompt]
+    context_lines = []
 
-    lang_code = detected_language.language
-    lang_names = {
-        "rw": "Kinyarwanda",
-        "en": "English",
-        "fr": "French",
-    }
-    lang_name = lang_names.get(lang_code)
+    # 1. Language directive
+    if ambiguous_language:
+        context_lines.append(
+            "User Language: Ambiguous/Uncertain. If the user's intent is a greeting or unclear, "
+            "respond with a concise, warm trilingual greeting (Kinyarwanda/English/French) "
+            "asking which language they prefer."
+        )
+    elif detected_language is not None and detected_language.is_reliable:
+        lang_code = detected_language.language
+        lang_names = {
+            "rw": "Kinyarwanda",
+            "en": "English",
+            "fr": "French",
+        }
+        lang_name = lang_names.get(lang_code)
+        if lang_name:
+            if detected_language.is_mixed:
+                context_lines.append(
+                    f"User Language: Mixed (primarily {lang_name}). "
+                    f"Respond naturally, honoring their meaning and primary language."
+                )
+            else:
+                context_lines.append(
+                    f"User Language: {lang_name}. Respond naturally in {lang_name}."
+                )
 
-    if lang_name:
-        if detected_language.is_mixed:
-            directive = (
-                f"\n\n[Current Turn Context]\n"
-                f"User Language: Mixed (primarily {lang_name}). Respond naturally, honoring their meaning and primary language."
-            )
-        else:
-            directive = (
-                f"\n\n[Current Turn Context]\n"
-                f"User Language: {lang_name}. Respond naturally in {lang_name}."
-            )
-        return base_prompt + directive
+    # 2. Mode directive (resolve enum or string key to directive text)
+    if mode is not None:
+        mode_key = mode.value if hasattr(mode, "value") else str(mode)
+        mode_directive = _MODE_DIRECTIVES.get(mode_key)
+        if mode_directive:
+            context_lines.append(mode_directive)
 
-    return base_prompt
+    # 3. Clarification continuation
+    if requires_clarification:
+        context_lines.append(
+            "Clarification Pending: The previous turn indicated that clarification is needed. "
+            "Continue clarifying the user's intent before offering advice or exercises."
+        )
+
+    if context_lines:
+        parts.append("\n\n[Current Turn Context]")
+        parts.append("\n".join(context_lines))
+
+    return "\n".join(parts)
 
 
 class OversizedMessageError(ValueError):
@@ -173,6 +223,9 @@ class ConversationManager:
         self,
         user_text: str,
         detected_language: Optional[LanguageDetectionResult] = None,
+        mode: Optional[Any] = None,
+        ambiguous_language: bool = False,
+        requires_clarification: bool = False,
     ) -> Tuple[List[Dict[str, str]], List[Dict[str, str]]]:
         """
         Prepares and trims candidate messages for a new user turn:
@@ -182,7 +235,12 @@ class ConversationManager:
         3. Returns (candidate_messages, candidate_history).
         Raises OversizedMessageError if the user message cannot fit even with zero history.
         """
-        system_content = _format_per_turn_system_prompt(self.system_prompt, detected_language)
+        system_content = _format_per_turn_system_prompt(
+            self.system_prompt, detected_language,
+            mode=mode,
+            ambiguous_language=ambiguous_language,
+            requires_clarification=requires_clarification,
+        )
         candidate_system_msg = {"role": "system", "content": system_content}
         user_msg = {"role": "user", "content": user_text}
         budget = self.get_available_budget()
@@ -230,6 +288,9 @@ class ConversationManager:
         self,
         user_text: str,
         detected_language: Optional[LanguageDetectionResult] = None,
+        mode: Optional[Any] = None,
+        ambiguous_language: bool = False,
+        requires_clarification: bool = False,
     ) -> str:
         """
         Generates a response for a user message, maintaining context and handling errors.
@@ -247,7 +308,10 @@ class ConversationManager:
             return ""
 
         candidate_messages, candidate_history = self.prepare_candidate_messages(
-            user_text, detected_language=detected_language
+            user_text, detected_language=detected_language,
+            mode=mode,
+            ambiguous_language=ambiguous_language,
+            requires_clarification=requires_clarification,
         )
 
         try:

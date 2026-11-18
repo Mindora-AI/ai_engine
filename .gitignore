@@ -9,6 +9,8 @@ __pycache__/
 *.py[cod]
 *$py.class
 .pytest_cache/
+.mypy_cache/
+.ruff_cache/
 .cache/
 
 # Large Model Weights and Repositories
@@ -38,3 +40,5 @@ outputs/tts_baseline_evaluation/*
 .DS_Store
 Thumbs.db
 *.log
+*.tmp
+*.bak

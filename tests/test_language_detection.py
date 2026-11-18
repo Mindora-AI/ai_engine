@@ -335,7 +335,9 @@ class TestLanguageDetection(unittest.TestCase):
         self.assertEqual(manager.messages[2]["content"], "I hear you clearly.")
 
     def test_24_unreliable_language_detection_does_not_inject_directive(self):
-        """24. Ambiguous or unreliable detection avoids forcing an arbitrary language directive."""
+        """24. Ambiguous or unreliable detection does not inject a *specific language* directive.
+        Chunk 6 Phase 2 adds an ambiguous-language guidance directive and mode directive
+        when language is unreliable, but never a forced language (e.g. 'User Language: English')."""
         mock_llm = MagicMock(spec=AfriqueQwenLLM)
         mock_llm.generate_completion.return_value = json.dumps({
             "response_text": "Subiza.",
@@ -348,9 +350,13 @@ class TestLanguageDetection(unittest.TestCase):
         # Ambiguous input
         engine.process_turn(TurnRequest(user_text="xyz999"))
 
-        # Candidate sent to LLM should NOT contain a rigid language directive
+        # Candidate sent to LLM should NOT contain a forced language directive
         call_prompt = mock_llm.generate_completion.call_args[0][0][0]["content"]
-        self.assertNotIn("[Current Turn Context]", call_prompt)
+        self.assertNotIn("User Language: English", call_prompt)
+        self.assertNotIn("User Language: Kinyarwanda", call_prompt)
+        self.assertNotIn("User Language: French", call_prompt)
+        # But it SHOULD contain the ambiguous-language guidance (Chunk 6 Phase 2)
+        self.assertIn("User Language: Ambiguous/Uncertain", call_prompt)
 
     # -------------------------------------------------------------------------
     # Chunk 3A Defect Regression Tests
