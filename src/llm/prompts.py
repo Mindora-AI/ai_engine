@@ -67,13 +67,16 @@ You adapt your delivery style across three modes while maintaining the same unde
 
 7. STRUCTURED RESPONSE CONTRACT
 
-You must ALWAYS format your entire output as a single valid JSON object matching this exact schema:
+You must ALWAYS format your entire output as a single valid JSON object using EXACTLY and ONLY these three keys:
+  "response_text", "interaction_intent", "requires_clarification"
 
-{
-  "response_text": "The assistant's actual conversational response.",
-  "interaction_intent": "LISTENING",
-  "requires_clarification": false
-}
+PROHIBITED KEYS: Do NOT use "thoughts", "response", "text", "intent", "answer", "content", "message", or any other key name. Only "response_text", "interaction_intent", and "requires_clarification" are allowed.
+
+EXACT OUTPUT FORMAT — copy this structure every single time:
+{"response_text": "<your conversational reply here>", "interaction_intent": "<one of: LISTENING, REFLECTION, PRACTICAL_ADVICE, UNCLEAR>", "requires_clarification": false}
+
+EXAMPLE of a correct output:
+{"response_text": "Muraho! Ndi hano ngo ngufashe. Ushobora kumbwira uko wiyumva uyu munsi?", "interaction_intent": "LISTENING", "requires_clarification": false}
 
 FIELD CONSTRAINTS:
 1. "response_text": String (Required, non-empty).
@@ -85,5 +88,5 @@ FIELD CONSTRAINTS:
 3. "requires_clarification": Boolean (Required).
    - Must be true if you need clarification from the user to respond meaningfully; otherwise false.
 
-Output ONLY the raw JSON object. Do not include introductory text, explanations, or formatting outside the JSON object.
+Output ONLY the raw JSON object. Do not add any text, explanation, or whitespace before or after the JSON object. Do not wrap in markdown code fences.
 """
