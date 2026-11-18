@@ -1,3 +1,4 @@
+import json
 import unittest
 from unittest.mock import MagicMock, patch
 from pathlib import Path
@@ -27,7 +28,11 @@ class TestAssistantIntegration(unittest.TestCase):
     def test_02_system_prompt_included(self):
         """2. Test system prompt is included in chat completion request."""
         mock_llm = MagicMock(spec=AfriqueQwenLLM)
-        mock_llm.generate_completion.return_value = "Muraho! Nguwo umusanzu wanjye."
+        mock_llm.generate_completion.return_value = json.dumps({
+            "response_text": "Muraho! Nguwo umusanzu wanjye.",
+            "interaction_intent": "LISTENING",
+            "requires_clarification": False,
+        })
 
         manager = ConversationManager(llm=mock_llm)
         manager.generate_response("Muraho")
@@ -40,7 +45,11 @@ class TestAssistantIntegration(unittest.TestCase):
     def test_03_history_includes_latest_user_message(self):
         """3. Test conversation history includes latest user message after response."""
         mock_llm = MagicMock(spec=AfriqueQwenLLM)
-        mock_llm.generate_completion.return_value = "Ndi hano kuwfasha."
+        mock_llm.generate_completion.return_value = json.dumps({
+            "response_text": "Ndi hano kuwfasha.",
+            "interaction_intent": "LISTENING",
+            "requires_clarification": False,
+        })
 
         manager = ConversationManager(llm=mock_llm)
         manager.generate_response("Bite?")
@@ -54,7 +63,11 @@ class TestAssistantIntegration(unittest.TestCase):
     def test_04_history_trimming_preserves_system_prompt_and_pairs(self):
         """4. Test history trimming preserves system prompt and complete recent turn pairs."""
         mock_llm = MagicMock(spec=AfriqueQwenLLM)
-        mock_llm.generate_completion.return_value = "Subiza"
+        mock_llm.generate_completion.return_value = json.dumps({
+            "response_text": "Subiza",
+            "interaction_intent": "LISTENING",
+            "requires_clarification": False,
+        })
 
         manager = ConversationManager(llm=mock_llm, max_turns=2)
         # Add 3 turns
@@ -73,7 +86,11 @@ class TestAssistantIntegration(unittest.TestCase):
     def test_05_clear_resets_conversation(self):
         """5. Test reset_conversation clears history while retaining system prompt."""
         mock_llm = MagicMock(spec=AfriqueQwenLLM)
-        mock_llm.generate_completion.return_value = "Igisubizo"
+        mock_llm.generate_completion.return_value = json.dumps({
+            "response_text": "Igisubizo",
+            "interaction_intent": "LISTENING",
+            "requires_clarification": False,
+        })
 
         manager = ConversationManager(llm=mock_llm)
         manager.generate_response("Mwaramutse")
@@ -153,7 +170,11 @@ class TestAssistantIntegration(unittest.TestCase):
     def test_11_text_mode_runs_independently(self):
         """11. Test text mode runs independently without initializing ASR or TTS."""
         mock_llm = MagicMock(spec=AfriqueQwenLLM)
-        mock_llm.generate_completion.return_value = "Text response"
+        mock_llm.generate_completion.return_value = json.dumps({
+            "response_text": "Text response",
+            "interaction_intent": "LISTENING",
+            "requires_clarification": False,
+        })
         manager = ConversationManager(llm=mock_llm)
 
         res = manager.generate_response("Hello in text mode")

@@ -1,7 +1,47 @@
-from typing import List, Dict, Optional, Tuple
+from typing import List, Dict, Optional, Tuple, Any
 from src.llm.prompts import SYSTEM_PROMPT
 from src.llm.afrique_qwen import AfriqueQwenLLM
 from src.llm.response_cleaner import clean_response
+from src.llm.response_parser import ParsedResponse, ResponseParsingError, safe_parse_response
+from src.utils.language_detector import LanguageDetectionResult
+from src.safety.evaluator import SafetyEvaluator
+from src.safety.guardrail import SafetyGuardrail
+from src.safety.categories import ApplicationAction
+
+
+def _format_per_turn_system_prompt(
+    base_prompt: str,
+    detected_language: Optional[LanguageDetectionResult],
+) -> str:
+    """
+    Constructs an ephemeral, per-turn system prompt incorporating reliable language context.
+    The base prompt remains unchanged in committed conversation history.
+    """
+    if detected_language is None or not detected_language.is_reliable:
+        return base_prompt
+
+    lang_code = detected_language.language
+    lang_names = {
+        "rw": "Kinyarwanda",
+        "en": "English",
+        "fr": "French",
+    }
+    lang_name = lang_names.get(lang_code)
+
+    if lang_name:
+        if detected_language.is_mixed:
+            directive = (
+                f"\n\n[Current Turn Context]\n"
+                f"User Language: Mixed (primarily {lang_name}). Respond naturally, honoring their meaning and primary language."
+            )
+        else:
+            directive = (
+                f"\n\n[Current Turn Context]\n"
+                f"User Language: {lang_name}. Respond naturally in {lang_name}."
+            )
+        return base_prompt + directive
+
+    return base_prompt
 
 
 class OversizedMessageError(ValueError):
@@ -23,6 +63,7 @@ class ConversationManager:
     4. Oversized user messages that exceed available budget are rejected without state mutation.
     5. Official conversation state is updated only upon successful non-empty inference.
     6. System prompt is preserved across resets.
+    7. Enforces strict structured response contract validation on every non-empty response.
     """
 
     def __init__(
@@ -33,11 +74,17 @@ class ConversationManager:
         max_tokens: Optional[int] = None,
         safety_margin: int = 16,
         system_prompt: str = SYSTEM_PROMPT,
+        safety_evaluator: Optional[SafetyEvaluator] = None,
+        safety_guardrail: Optional[SafetyGuardrail] = None,
     ):
         self.llm = llm if llm is not None else AfriqueQwenLLM()
         self.max_turns = max_turns
         self.safety_margin = safety_margin
         self.system_prompt = system_prompt
+        self.last_parsed_response: Optional[ParsedResponse] = None
+        self.safety_evaluator = safety_evaluator if safety_evaluator is not None else SafetyEvaluator()
+        self.safety_guardrail = safety_guardrail if safety_guardrail is not None else SafetyGuardrail()
+        self.last_gate2_triggered: bool = False
 
         # Determine n_ctx from parameter, llm instance, or default 4096
         if n_ctx is not None:
@@ -70,6 +117,8 @@ class ConversationManager:
                 "content": self.system_prompt,
             }
         ]
+        self.last_parsed_response = None
+        self.last_gate2_triggered = False
 
     def get_available_budget(self) -> int:
         """
@@ -116,21 +165,25 @@ class ConversationManager:
         self.messages = [self.messages[0]] + context
 
     def prepare_candidate_messages(
-        self, user_text: str
+        self,
+        user_text: str,
+        detected_language: Optional[LanguageDetectionResult] = None,
     ) -> Tuple[List[Dict[str, str]], List[Dict[str, str]]]:
         """
         Prepares and trims candidate messages for a new user turn:
-        1. Checks if the user message alone with the system prompt fits within the budget.
+        1. Checks if the user message alone with the per-turn system prompt fits within the budget.
         2. Trims candidate history by removing the oldest complete user-assistant exchange
            until the candidate prompt fits within the budget.
         3. Returns (candidate_messages, candidate_history).
         Raises OversizedMessageError if the user message cannot fit even with zero history.
         """
+        system_content = _format_per_turn_system_prompt(self.system_prompt, detected_language)
+        candidate_system_msg = {"role": "system", "content": system_content}
         user_msg = {"role": "user", "content": user_text}
         budget = self.get_available_budget()
 
         # Step 1: Check minimal candidate (system prompt + user message)
-        minimal_candidate = [self.messages[0], user_msg]
+        minimal_candidate = [candidate_system_msg, user_msg]
         minimal_tokens = self.count_tokens(minimal_candidate)
         if minimal_tokens > budget:
             raise OversizedMessageError(
@@ -150,13 +203,13 @@ class ConversationManager:
                 candidate_history = candidate_history[2:]
 
         # Step 3: Trim oldest complete turn pairs until candidate fits within budget
-        candidate_messages = [self.messages[0]] + candidate_history + [user_msg]
+        candidate_messages = [candidate_system_msg] + candidate_history + [user_msg]
         while (
             len(candidate_history) >= 2
             and self.count_tokens(candidate_messages) > budget
         ):
             candidate_history = candidate_history[2:]
-            candidate_messages = [self.messages[0]] + candidate_history + [user_msg]
+            candidate_messages = [candidate_system_msg] + candidate_history + [user_msg]
 
         # Step 4: Final verification
         candidate_tokens = self.count_tokens(candidate_messages)
@@ -168,17 +221,28 @@ class ConversationManager:
 
         return candidate_messages, candidate_history
 
-    def generate_response(self, user_text: str) -> str:
+    def generate_response(
+        self,
+        user_text: str,
+        detected_language: Optional[LanguageDetectionResult] = None,
+    ) -> str:
         """
         Generates a response for a user message, maintaining context and handling errors.
         Candidate history trimming and token budget checks occur before inference.
         Official conversation state is committed only upon successful non-empty response.
+        Enforces strict compliance with the structured response contract.
         """
+        # DEFECT-02 fix: Reset per-turn metadata before any early returns, validation, or generation
+        self.last_parsed_response = None
+        self.last_gate2_triggered = False
+
         user_text = user_text.strip() if user_text else ""
         if not user_text:
             return ""
 
-        candidate_messages, candidate_history = self.prepare_candidate_messages(user_text)
+        candidate_messages, candidate_history = self.prepare_candidate_messages(
+            user_text, detected_language=detected_language
+        )
 
         try:
             # Inference call
@@ -189,14 +253,82 @@ class ConversationManager:
                 # Empty response generated - do not mutate official state
                 return ""
 
+            # DEFECT-01 fix: Strict contract enforcement with zero unconstrained fallback
+            parsed, parse_err = safe_parse_response(cleaned)
+            if parsed is None:
+                raise ResponseParsingError(
+                    f"Model response violated structured response contract: {parse_err}"
+                )
+
+            # Gate 2: Independently assess generated candidate response before committing
+            candidate_text = parsed.response_text
+            assistant_assessment = self.safety_evaluator.evaluate(
+                candidate_text, conversation_context=candidate_messages
+            )
+            gate2_action = self.safety_guardrail.determine_action(assistant_assessment)
+
+            if gate2_action != ApplicationAction.NORMAL_CONVERSATION:
+                # Unsafe model output detected by Gate 2!
+                # Reject model output: do NOT commit candidate_text, do NOT leak parsed metadata
+                self.last_gate2_triggered = True
+                self.last_parsed_response = None
+
+                target_lang = (
+                    detected_language.language
+                    if (detected_language and detected_language.is_reliable and detected_language.language in ("rw", "en", "fr"))
+                    else assistant_assessment.detected_expression_language or "rw"
+                )
+                safe_fallback = self.safety_guardrail.get_response(
+                    assistant_assessment, gate2_action, target_lang
+                )
+
+                # Commit only the approved deterministic replacement response
+                self.messages = [self.messages[0]] + candidate_history + [
+                    {"role": "user", "content": user_text},
+                    {"role": "assistant", "content": safe_fallback},
+                ]
+                return safe_fallback
+
+            # Gate 2 passed: safe model output
+            self.last_parsed_response = parsed
+            final_response_text = candidate_text
+
             # Update official state with trimmed history + new turn pair
             self.messages = [self.messages[0]] + candidate_history + [
                 {"role": "user", "content": user_text},
-                {"role": "assistant", "content": cleaned},
+                {"role": "assistant", "content": final_response_text},
             ]
 
-            return cleaned
+            return final_response_text
         except Exception as e:
-            # On error, do not mutate state with half-turns
+            # On error, ensure metadata remains cleared and state is not mutated
+            self.last_parsed_response = None
+            self.last_gate2_triggered = False
             print(f"Error during LLM inference: {e}")
             raise e
+
+    def record_deterministic_turn(
+        self,
+        user_text: str,
+        response_text: str,
+        detected_language: Optional[LanguageDetectionResult] = None,
+    ) -> None:
+        """
+        Atomically commits a deterministic turn pair (e.g. from Gate 1 safety override)
+        into official conversation history, respecting token budgeting and history trimming.
+        Clears last_parsed_response and resets per-turn safety flags.
+        """
+        self.last_parsed_response = None
+        self.last_gate2_triggered = False
+
+        user_text = user_text.strip() if user_text else ""
+        if not user_text or not response_text:
+            return
+
+        candidate_messages, candidate_history = self.prepare_candidate_messages(
+            user_text, detected_language=detected_language
+        )
+        self.messages = [self.messages[0]] + candidate_history + [
+            {"role": "user", "content": user_text},
+            {"role": "assistant", "content": response_text},
+        ]

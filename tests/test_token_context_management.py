@@ -1,3 +1,4 @@
+import json
 import unittest
 from unittest.mock import MagicMock, patch
 from pathlib import Path
@@ -23,7 +24,11 @@ class TestTokenAwareContextManagement(unittest.TestCase):
 
     def test_01_short_conversation_fits_in_context(self):
         """1. A normal short conversation fits within the context without trimming."""
-        self.mock_llm.generate_completion.return_value = "I am doing well, thank you."
+        self.mock_llm.generate_completion.return_value = json.dumps({
+            "response_text": "I am doing well, thank you.",
+            "interaction_intent": "LISTENING",
+            "requires_clarification": False,
+        })
         # Short token count well within budget
         self.mock_llm.count_tokens.return_value = 100
 
@@ -41,7 +46,11 @@ class TestTokenAwareContextManagement(unittest.TestCase):
 
     def test_02_long_conversation_triggers_removal_of_older_complete_exchanges(self):
         """2. A long conversation triggers removal of older complete exchanges when token limit is exceeded."""
-        self.mock_llm.generate_completion.return_value = "Response"
+        self.mock_llm.generate_completion.return_value = json.dumps({
+            "response_text": "Response",
+            "interaction_intent": "LISTENING",
+            "requires_clarification": False,
+        })
 
         # Simulate dynamic token counting:
         # Budget = 4096 - 512 - 16 = 3568
@@ -75,7 +84,11 @@ class TestTokenAwareContextManagement(unittest.TestCase):
 
     def test_03_system_prompt_preserved_after_trimming(self):
         """3. The system prompt is strictly preserved at index 0 after trimming."""
-        self.mock_llm.generate_completion.return_value = "Response"
+        self.mock_llm.generate_completion.return_value = json.dumps({
+            "response_text": "Response",
+            "interaction_intent": "LISTENING",
+            "requires_clarification": False,
+        })
 
         def count_func(messages):
             # If more than 3 messages, report high token count to force trimming
@@ -94,7 +107,11 @@ class TestTokenAwareContextManagement(unittest.TestCase):
 
     def test_04_newest_user_message_preserved(self):
         """4. The newest user message is preserved in candidate prompt and committed history."""
-        self.mock_llm.generate_completion.return_value = "Response to newest"
+        self.mock_llm.generate_completion.return_value = json.dumps({
+            "response_text": "Response to newest",
+            "interaction_intent": "LISTENING",
+            "requires_clarification": False,
+        })
 
         def count_func(messages):
             # Force trimming if candidate history has messages
@@ -214,7 +231,11 @@ class TestTokenAwareContextManagement(unittest.TestCase):
 
     def test_10_conversation_reset_works_correctly(self):
         """10. Conversation reset works correctly and preserves system prompt."""
-        self.mock_llm.generate_completion.return_value = "Subiza"
+        self.mock_llm.generate_completion.return_value = json.dumps({
+            "response_text": "Subiza",
+            "interaction_intent": "LISTENING",
+            "requires_clarification": False,
+        })
         self.mock_llm.count_tokens.return_value = 100
 
         manager = ConversationManager(llm=self.mock_llm, n_ctx=4096, max_tokens=512)
@@ -229,7 +250,11 @@ class TestTokenAwareContextManagement(unittest.TestCase):
 
     def test_11_modes_retain_existing_behavior(self):
         """11. Text, voice, and text-to-voice modes retain their existing behavior."""
-        self.mock_llm.generate_completion.return_value = "Muraho neza!"
+        self.mock_llm.generate_completion.return_value = json.dumps({
+            "response_text": "Muraho neza!",
+            "interaction_intent": "LISTENING",
+            "requires_clarification": False,
+        })
         self.mock_llm.count_tokens.return_value = 100
         manager = ConversationManager(llm=self.mock_llm, n_ctx=4096, max_tokens=512)
 
@@ -249,7 +274,11 @@ class TestTokenAwareContextManagement(unittest.TestCase):
 
     def test_12_varying_message_lengths_managed_by_actual_token_usage(self):
         """12. A conversation with varying message lengths is managed according to actual token usage."""
-        self.mock_llm.generate_completion.return_value = "Answer"
+        self.mock_llm.generate_completion.return_value = json.dumps({
+            "response_text": "Answer",
+            "interaction_intent": "LISTENING",
+            "requires_clarification": False,
+        })
 
         # Budget = 4096 - 512 - 16 = 3568
         # We test two cases with max_turns=None (pure token management):

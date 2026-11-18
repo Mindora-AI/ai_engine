@@ -1,7 +1,7 @@
 import argparse
 import sys
 from pathlib import Path
-from typing import Optional
+from typing import Optional, Union
 
 # Ensure src is in python path
 PROJECT_ROOT = Path(__file__).resolve().parent
@@ -9,15 +9,30 @@ if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
 
 from src.llm.conversation import ConversationManager
+from src.conversation.session import TurnRequest, TurnResult, ConversationMode
+from src.conversation.engine import ConversationEngine
 from src.asr.asr_engine import ASREngine
 from src.tts.tts_engine import TTSEngine
 
 
-def run_text_mode(manager: ConversationManager):
+def _ensure_engine(target: Union[ConversationEngine, ConversationManager]) -> ConversationEngine:
+    """
+    Ensures the target handler is a ConversationEngine.
+    If a ConversationManager is passed (e.g. from existing test suites or external callers),
+    wraps it in a ConversationEngine to maintain complete backward compatibility.
+    """
+    if isinstance(target, ConversationEngine):
+        return target
+    return ConversationEngine(manager=target)
+
+
+def run_text_mode(engine: Union[ConversationEngine, ConversationManager]):
     """
     Runs text chat mode in console.
     Independent of ASR and TTS.
     """
+    conv_engine = _ensure_engine(engine)
+
     print("\n" + "=" * 60)
     print("  Kinyarwanda Local Voice Assistant - Text Chat Mode")
     print("=" * 60)
@@ -41,26 +56,27 @@ def run_text_mode(manager: ConversationManager):
             break
 
         if user_input.lower() in ["/clear", "/reset"]:
-            manager.reset_conversation()
+            conv_engine.reset_conversation()
             print("[System] Conversation history reset (System prompt preserved).\n")
             continue
 
         try:
-            response = manager.generate_response(user_input)
-            print(f"\nAssistant > {response}\n")
+            result = conv_engine.process_turn(TurnRequest(user_text=user_input))
+            print(f"\nAssistant > {result.response_text}\n")
         except Exception as e:
             print(f"\n[Error] Failed to generate response: {e}\n")
 
 
 def run_text_voice_mode(
-    manager: ConversationManager,
+    engine: Union[ConversationEngine, ConversationManager],
     speaker_id: int = 0,
 ):
     """
     Runs text-to-voice mode:
-    User types text -> ConversationManager -> AfriqueQwen LLM -> KinyaFlex TTS -> WAV Output.
+    User types text -> ConversationEngine -> AfriqueQwen LLM -> KinyaFlex TTS -> WAV Output.
     ASR is skipped entirely.
     """
+    conv_engine = _ensure_engine(engine)
     tts = TTSEngine(default_speaker=speaker_id)
 
     print("\n" + "=" * 60)
@@ -86,14 +102,15 @@ def run_text_voice_mode(
             break
 
         if user_input.lower() in ["/clear", "/reset"]:
-            manager.reset_conversation()
+            conv_engine.reset_conversation()
             print("[System] Conversation history reset (System prompt preserved).\n")
             continue
 
         # Step 1: Generate LLM response
         print("[1/2] Generating response with AfriqueQwen...")
         try:
-            response = manager.generate_response(user_input)
+            result = conv_engine.process_turn(TurnRequest(user_text=user_input))
+            response = result.response_text
             print(f"\nAssistant > {response}\n")
         except Exception as e:
             print(f"\n[LLM Error] Failed to generate response: {e}\n")
@@ -116,14 +133,16 @@ def run_text_voice_mode(
 
 
 def run_voice_mode(
-    manager: ConversationManager,
+    engine: Union[ConversationEngine, ConversationManager],
     audio_file: str = None,
     speaker_id: int = 0,
 ):
     """
     Runs voice mode pipeline:
-    Audio Input -> ASR -> Conversation Manager -> AfriqueQwen -> Response Cleaner -> KinyaFlex TTS -> WAV Output
+    Audio Input -> ASR -> Conversation Engine -> AfriqueQwen -> Response Cleaner -> KinyaFlex TTS -> WAV Output
     """
+    conv_engine = _ensure_engine(engine)
+
     print("\n" + "=" * 60)
     print("  Kinyarwanda Local Voice Assistant - Voice Mode")
     print("=" * 60)
@@ -134,7 +153,7 @@ def run_voice_mode(
 
     if audio_file:
         print(f"Processing audio file: {audio_file}")
-        transcribe_and_respond(manager, asr, tts, audio_file)
+        transcribe_and_respond(conv_engine, asr, tts, audio_file)
         return
 
     print("Voice mode activated.")
@@ -155,7 +174,7 @@ def run_voice_mode(
             break
 
         if user_input.lower() in ["/clear", "/reset"]:
-            manager.reset_conversation()
+            conv_engine.reset_conversation()
             print("[System] Conversation history reset.\n")
             continue
 
@@ -164,18 +183,20 @@ def run_voice_mode(
             print(f"[Error] Audio file not found: {wav_path.resolve()}\n")
             continue
 
-        transcribe_and_respond(manager, asr, tts, str(wav_path))
+        transcribe_and_respond(conv_engine, asr, tts, str(wav_path))
 
 
 def run_voice_text_mode(
-    manager: ConversationManager,
+    engine: Union[ConversationEngine, ConversationManager],
     audio_file: str = None,
 ):
     """
     Runs voice-to-text mode:
-    Audio Input (WAV) -> ASR -> Conversation Manager -> AfriqueQwen -> Response Cleaner -> Text Output.
+    Audio Input (WAV) -> ASR -> Conversation Engine -> AfriqueQwen -> Response Cleaner -> Text Output.
     TTS speech synthesis is skipped.
     """
+    conv_engine = _ensure_engine(engine)
+
     print("\n" + "=" * 60)
     print("  Kinyarwanda Local Voice Assistant - Voice-to-Text Mode")
     print("=" * 60)
@@ -184,7 +205,7 @@ def run_voice_text_mode(
 
     if audio_file:
         print(f"Processing audio file: {audio_file}")
-        transcribe_and_respond(manager, asr, None, audio_file)
+        transcribe_and_respond(conv_engine, asr, None, audio_file)
         return
 
     print("Voice-to-Text mode activated.")
@@ -205,7 +226,7 @@ def run_voice_text_mode(
             break
 
         if user_input.lower() in ["/clear", "/reset"]:
-            manager.reset_conversation()
+            conv_engine.reset_conversation()
             print("[System] Conversation history reset.\n")
             continue
 
@@ -214,11 +235,11 @@ def run_voice_text_mode(
             print(f"[Error] Audio file not found: {wav_path.resolve()}\n")
             continue
 
-        transcribe_and_respond(manager, asr, None, str(wav_path))
+        transcribe_and_respond(conv_engine, asr, None, str(wav_path))
 
 
 def transcribe_and_respond(
-    manager: ConversationManager,
+    engine: Union[ConversationEngine, ConversationManager],
     asr: ASREngine,
     tts: Optional[TTSEngine],
     audio_path: str,
@@ -226,6 +247,8 @@ def transcribe_and_respond(
     """
     Processes a single voice turn from an audio WAV file.
     """
+    conv_engine = _ensure_engine(engine)
+
     print(f"\n[1/4] Transcribing audio with ASR: {audio_path}...")
     try:
         transcription = asr.transcribe_audio(audio_path)
@@ -241,7 +264,8 @@ def transcribe_and_respond(
 
     print("[3/4] Generating response with AfriqueQwen...")
     try:
-        response = manager.generate_response(transcription)
+        result = conv_engine.process_turn(TurnRequest(user_text=transcription))
+        response = result.response_text
         print(f"\nAssistant > {response}\n")
     except Exception as e:
         print(f"[LLM Error] Generation failed: {e}\n")
@@ -297,16 +321,16 @@ def main():
 
     args = parser.parse_args()
 
-    manager = ConversationManager()
+    engine = ConversationEngine()
 
     if args.mode == "text":
-        run_text_mode(manager)
+        run_text_mode(engine)
     elif args.mode == "voice":
-        run_voice_mode(manager, audio_file=args.audio_file, speaker_id=args.speaker)
+        run_voice_mode(engine, audio_file=args.audio_file, speaker_id=args.speaker)
     elif args.mode == "text-voice":
-        run_text_voice_mode(manager, speaker_id=args.speaker)
+        run_text_voice_mode(engine, speaker_id=args.speaker)
     elif args.mode == "voice-text":
-        run_voice_text_mode(manager, audio_file=args.audio_file)
+        run_voice_text_mode(engine, audio_file=args.audio_file)
 
 
 if __name__ == "__main__":

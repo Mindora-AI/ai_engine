@@ -86,8 +86,10 @@ class TTSEngine:
         # Check language support
         if check_lang:
             lang = detect_language(text)
-            if lang in ["english", "french"]:
-                print(f"[TTS Notice] Text detected as {lang.capitalize()}. KinyaFlex TTS only supports Kinyarwanda. Skipping speech synthesis.")
+            lang_code = lang.language if hasattr(lang, "language") else str(lang)
+            if lang in ["english", "french"] or lang_code in ["en", "fr"]:
+                display_name = "English" if (lang == "english" or lang_code == "en") else "French"
+                print(f"[TTS Notice] Text detected as {display_name}. KinyaFlex TTS only supports Kinyarwanda. Skipping speech synthesis.")
                 return None
 
         if speaker_id is None:
