@@ -68,7 +68,7 @@ def build_ui(speaker_id: int = 0) -> gr.Blocks:
             "Uses the production ConversationEngine and TTS router."
         )
         with gr.Tab("Text chat + voice reply"):
-            chatbot = gr.Chatbot(label="Conversation")
+            chatbot = gr.Chatbot(label="Conversation", type="tuples")
             msg = gr.Textbox(label="Your message")
             audio_out = gr.Audio(label="Assistant voice", type="filepath")
             with gr.Row():

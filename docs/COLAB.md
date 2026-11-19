@@ -107,6 +107,8 @@ The notebook uses production code paths:
 
 | Symptom | Action |
 |---------|--------|
+| `cannot import name 'HfFolder' from 'huggingface_hub'` | Re-run deps cell — installs `gradio>=5.7.1` (incompatible with Gradio 4 + hub 1.x) |
+| `No module named 'deepkin'` | Re-run DeepKIN cell; check git clone of `c4ir-rw/ac-ai-models` and pip `-e DeepKIN-AgAI --no-deps` |
 | `colab_runtime.py` not found after clone | Push latest `ai_engine` to GitHub; re-run cell 1 |
 | Drive mount cancelled | Re-run Drive cell; do not continue |
 | `No compatible CUDA wheel` | CPU LLM (`N_GPU_LAYERS=0`); inference is slower |

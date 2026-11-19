@@ -33,6 +33,7 @@ SCRIPTS = (
     "download_models.py",
     "verify_notebook_imports.py",
 )
+COLAB_ROOT_FILES = ("constraints-colab.txt", "requirements-colab.txt")
 
 
 def _load_colab_runtime_symbols() -> Set[str]:
@@ -75,8 +76,9 @@ def _notebook_imports_from_scripts() -> Set[str]:
 
 def verify_scripts_on_disk() -> None:
     missing = [s for s in SCRIPTS if not (PROJECT_ROOT / "scripts" / s).is_file()]
+    missing += [f for f in COLAB_ROOT_FILES if not (PROJECT_ROOT / f).is_file()]
     if missing:
-        raise FileNotFoundError("Missing scripts: " + ", ".join(missing))
+        raise FileNotFoundError("Missing Colab files: " + ", ".join(missing))
 
 
 def main(argv: Iterable[str] | None = None) -> int:

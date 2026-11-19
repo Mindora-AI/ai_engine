@@ -87,3 +87,34 @@ class TestApplyGpuLayers:
         layers = colab_runtime.apply_llm_gpu_layers(hw, llama_info)
         assert layers == 0
         assert os.environ["MWIZERWA_LLM_N_GPU_LAYERS"] == "0"
+
+
+class TestVersionParsing:
+    def test_parse_version_tuple(self):
+        assert colab_runtime._parse_version_tuple("5.50.0") >= (5, 7, 1)
+        assert colab_runtime._parse_version_tuple("4.44.0") < (5, 7, 1)
+
+    def test_import_gradio_subprocess(self):
+        ok, detail = colab_runtime._import_gradio_in_subprocess()
+        assert ok, detail
+
+
+class TestCriticalImports:
+    def test_specs_include_gradio_and_deepkin(self):
+        names = {s.package_name for s in colab_runtime.CRITICAL_IMPORTS}
+        assert "gradio" in names
+        assert "deepkin" in names
+
+    def test_deepkin_importable_local(self):
+        assert colab_runtime.deepkin_importable() is True
+
+
+class TestInstallDeepkinIdempotent:
+    def test_skips_when_already_installed(self, tmp_path):
+        if not colab_runtime.deepkin_importable():
+            pytest.skip("deepkin not installed in this environment")
+        project = tmp_path / "proj"
+        project.mkdir()
+        (project / "run_assistant.py").write_text("", encoding="utf-8")
+        info = colab_runtime.install_deepkin(project)
+        assert info["status"] == "already_installed"

@@ -1,0 +1,4 @@
+# Colab pip constraints (applied with -c constraints-colab.txt).
+# Prevents Gradio 4.x after huggingface_hub 1.x is installed (HfFolder removed).
+gradio>=5.7.1,<6
+huggingface_hub>=0.23.2
