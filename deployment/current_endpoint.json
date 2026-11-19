@@ -1,0 +1,7 @@
+{
+  "base_url": "",
+  "status": "offline",
+  "last_updated": null,
+  "api_docs_url": null,
+  "notes": "Placeholder registry. The Colab operator must set base_url and last_updated when ngrok starts. Not updated automatically unless you add a publish step (see DEPLOYMENT_GUIDE.md)."
+}

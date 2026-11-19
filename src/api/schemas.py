@@ -43,3 +43,22 @@ class ChatResponse(BaseModel):
 
 class ErrorResponse(BaseModel):
     detail: str
+
+
+class TranscribeResponse(BaseModel):
+    transcription: str
+
+
+class VoiceResponse(BaseModel):
+    """JSON voice turn; audio is base64 WAV for easy client playback."""
+
+    session_id: str
+    transcription: str
+    response_text: str
+    mode: str
+    language: Optional[str] = None
+    metadata: Dict[str, Any] = Field(default_factory=dict)
+    audio_base64: str = Field(
+        description="WAV audio of the assistant response (base64-encoded).",
+    )
+    audio_media_type: str = Field(default="audio/wav")
