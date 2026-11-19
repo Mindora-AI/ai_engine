@@ -153,7 +153,7 @@ class ConversationManager:
             else:
                 self.n_ctx = 4096
 
-        # Determine max_tokens from parameter, llm instance, or default 512
+        # Determine max_tokens from parameter, llm instance, or default 768
         if max_tokens is not None:
             self.max_tokens = max_tokens
         else:
@@ -161,7 +161,7 @@ class ConversationManager:
             if isinstance(llm_max, int):
                 self.max_tokens = llm_max
             else:
-                self.max_tokens = 512
+                self.max_tokens = 768
 
         self.messages: List[Dict[str, str]] = []
         self.reset_conversation()
@@ -331,6 +331,13 @@ class ConversationManager:
             if parsed is None:
                 raise ResponseParsingError(
                     f"Model response violated structured response contract: {parse_err}"
+                )
+            if isinstance(parsed.raw_json, dict) and parsed.raw_json.get(
+                "truncation_recovered"
+            ):
+                print(
+                    "[LLM Notice] Using partially recovered response text "
+                    "(generation stopped at max_tokens)."
                 )
 
             candidate_text = parsed.response_text

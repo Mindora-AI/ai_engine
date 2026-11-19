@@ -2,6 +2,8 @@ import os
 from pathlib import Path
 from typing import List, Dict, Any, Optional
 
+_DEFAULT_MAX_TOKENS = int(os.environ.get("MWIZERWA_LLM_MAX_TOKENS", "768"))
+
 # Resolve Project Root
 PROJECT_ROOT = Path(__file__).resolve().parent.parent.parent
 DEFAULT_MODEL_PATH = (
@@ -37,7 +39,7 @@ class AfriqueQwenLLM:
 
     _instance = None
     n_ctx: int = 4096
-    max_tokens: int = 512
+    max_tokens: int = _DEFAULT_MAX_TOKENS
 
     def __init__(
         self,
@@ -47,7 +49,7 @@ class AfriqueQwenLLM:
         n_gpu_layers: int = 0,
         temperature: float = 0.7,
         top_p: float = 0.9,
-        max_tokens: int = 512,
+        max_tokens: int = _DEFAULT_MAX_TOKENS,
     ):
         self.model_path = Path(model_path)
         self.n_ctx = n_ctx
@@ -58,6 +60,8 @@ class AfriqueQwenLLM:
         self.max_tokens = max_tokens
         self._llm = None
         self._formatter = None
+        self.last_finish_reason: Optional[str] = None
+        self.last_effective_max_tokens: Optional[int] = None
 
     def _resolve_chat_formatter(self):
         """
@@ -205,38 +209,67 @@ class AfriqueQwenLLM:
         llm = self.load_model()
         return len(llm.tokenize(text.encode("utf-8"), add_bos=False, special=True))
 
+    def _effective_max_tokens(self, messages: List[Dict[str, str]]) -> int:
+        """Cap completion length so prompt + generation fits within n_ctx."""
+        prompt_tokens = self.count_tokens(messages)
+        slack = 8
+        available = self.n_ctx - prompt_tokens - slack
+        if available < 32:
+            raise ValueError(
+                f"Prompt uses {prompt_tokens} tokens; only {available} remain in n_ctx={self.n_ctx}. "
+                "Shorten the conversation or reduce input length."
+            )
+        return min(self.max_tokens, available)
+
     def generate_completion(self, messages: List[Dict[str, str]]) -> str:
         """
         Generates a completion from a list of chat messages using the model's chat template,
         strictly constrained by the structured response contract schema via GBNF grammar.
         """
         llm = self.load_model()
+        effective_max = self._effective_max_tokens(messages)
+        self.last_effective_max_tokens = effective_max
+        if effective_max < self.max_tokens:
+            print(
+                f"[LLM Info] Completion budget capped to {effective_max} tokens "
+                f"(prompt uses {self.count_tokens(messages)} of n_ctx={self.n_ctx})."
+            )
+
         response_fmt = {
             "type": "json_object",
             "schema": STRUCTURED_RESPONSE_SCHEMA,
         }
+        completion_kwargs = dict(
+            messages=messages,
+            temperature=self.temperature,
+            top_p=self.top_p,
+            max_tokens=effective_max,
+        )
         try:
             response = llm.create_chat_completion(
-                messages=messages,
-                temperature=self.temperature,
-                top_p=self.top_p,
-                max_tokens=self.max_tokens,
+                **completion_kwargs,
                 response_format=response_fmt,
             )
         except Exception as e:
             # Fallback to generic json_object if schema compilation is unsupported
             print(f"[LLM Warning] Schema grammar completion failed ({e}), falling back to generic json_object.")
             response = llm.create_chat_completion(
-                messages=messages,
-                temperature=self.temperature,
-                top_p=self.top_p,
-                max_tokens=self.max_tokens,
+                **completion_kwargs,
                 response_format={"type": "json_object"},
             )
 
         choices = response.get("choices", [])
         if not choices:
+            self.last_finish_reason = None
             return ""
 
-        content = choices[0].get("message", {}).get("content", "")
+        choice = choices[0]
+        self.last_finish_reason = choice.get("finish_reason")
+        if self.last_finish_reason == "length":
+            print(
+                f"[LLM Warning] Generation hit the token limit ({effective_max}). "
+                "The JSON contract may be truncated; partial recovery will be attempted."
+            )
+
+        content = choice.get("message", {}).get("content", "")
         return content or ""

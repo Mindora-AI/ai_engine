@@ -13,6 +13,7 @@ from src.llm.response_parser import (
     ResponseParsingError,
     parse_response,
     safe_parse_response,
+    salvage_truncated_contract,
 )
 from src.llm.conversation import ConversationManager
 from src.llm.afrique_qwen import AfriqueQwenLLM
@@ -486,6 +487,20 @@ class TestResponseContract(unittest.TestCase):
         self.assertEqual(res2.response_text, "")
         self.assertNotIn("interaction_intent", res2.metadata)
         self.assertIsNone(manager.last_parsed_response)
+
+    def test_truncated_json_contract_recovery(self):
+        """Truncated max_tokens JSON still yields speakable response_text."""
+        truncated = (
+            '{"response_text": "One sentence. Two sentences. Three sentences about '
+            "listening and care without closing the JSON"
+        )
+        salvaged = salvage_truncated_contract(truncated)
+        self.assertIsNotNone(salvaged)
+        self.assertIn("One sentence", salvaged.response_text)
+
+        parsed, err = safe_parse_response(truncated)
+        self.assertIsNotNone(parsed)
+        self.assertIsNone(err)
 
 
 if __name__ == "__main__":

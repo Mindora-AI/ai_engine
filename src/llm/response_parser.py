@@ -144,13 +144,58 @@ def parse_response(text: str) -> ParsedResponse:
     )
 
 
+def _unescape_partial_json_string(fragment: str) -> str:
+    """Best-effort unescape for a JSON string value cut off before the closing quote."""
+    try:
+        return json.loads(f'"{fragment}"')
+    except json.JSONDecodeError:
+        cleaned = fragment.replace("\\n", "\n").replace('\\"', '"').replace("\\\\", "\\")
+        return cleaned.strip()
+
+
+def salvage_truncated_contract(text: str) -> Optional[ParsedResponse]:
+    """
+    Recover user-facing text when generation stops at max_tokens mid-JSON.
+    Returns None if the payload does not look like a truncated contract object.
+    """
+    payload = extract_json_payload(text)
+    if not payload or '"response_text"' not in payload:
+        return None
+
+    try:
+        json.loads(payload)
+        return None
+    except json.JSONDecodeError:
+        pass
+
+    match = re.search(r'"response_text"\s*:\s*"(.*)', payload, re.DOTALL)
+    if not match:
+        return None
+
+    raw_value = match.group(1)
+    response_text = _unescape_partial_json_string(raw_value).strip()
+    if not response_text:
+        return None
+
+    return ParsedResponse(
+        response_text=response_text,
+        interaction_intent=InteractionIntent.LISTENING,
+        requires_clarification=False,
+        raw_json={"truncation_recovered": True},
+    )
+
+
 def safe_parse_response(text: str) -> Tuple[Optional[ParsedResponse], Optional[str]]:
     """
     Non-raising wrapper around parse_response.
     Returns (ParsedResponse, None) on success, or (None, error_message) on failure.
+    Attempts truncation recovery when strict JSON parsing fails.
     """
     try:
         parsed = parse_response(text)
         return parsed, None
     except ResponseParsingError as e:
+        salvaged = salvage_truncated_contract(text)
+        if salvaged is not None:
+            return salvaged, None
         return None, str(e)
