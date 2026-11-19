@@ -64,21 +64,15 @@ ai_engine/
 │   ├── afriqueqwen/           # AfriqueQwen GGUF model file
 │   ├── kinya-flex-tts/        # KinyaFlex TTS PyTorch weights & metadata
 │   └── piper/                 # Piper ONNX voices (en_US-ljspeech-medium, fr_FR-siwis-medium)
-├── notebooks/                 # Exploratory and fine-tuning Colab notebooks
 ├── outputs/                   # Generated evaluation outputs and manifests
 │   ├── prosody_reference_set/ # Reference dataset manifests and inspection reports
-│   ├── tts_baseline_evaluation/ # 54-sample baseline TTS benchmark manifest & audio
-│   └── tts_phase2_experiments/  # Phase 2 speed and elision experiment outputs
-├── scratch/                   # Research scripts, dataset analysis, and intermediate tools
+│   └── tts_baseline_evaluation/ # 54-sample baseline TTS benchmark manifest & audio
 ├── scripts/                   # Operational and benchmarking scripts
 │   ├── benchmark_cpu_threads.py
 │   ├── download_models.py     # Verified model downloader with SHA-256 checks
-│   ├── inspect_prosody_reference_datasets.py
-│   ├── run_phase2_experiments.py
 │   ├── run_tts_baseline_evaluation.py
 │   ├── test_asr.py
-│   ├── test_kinya_flex.py
-│   └── train_colab_kinya_flex.py
+│   └── test_kinya_flex.py
 ├── src/                       # Primary application source code
 │   ├── asr/                   # Speech recognition engine wrapper
 │   ├── conversation/          # ConversationEngine orchestration & session models
