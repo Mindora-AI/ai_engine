@@ -1,0 +1,5 @@
+# MWIZERWA Google Colab dependencies
+# 1. pip install -r requirements-colab.txt
+# 2. scripts.colab_runtime.install_llama_cpp_for_colab()
+-r requirements-colab-packages.txt
+gradio>=4.44.0,<5

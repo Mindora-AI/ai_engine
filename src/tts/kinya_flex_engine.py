@@ -7,13 +7,9 @@ import torch
 
 from src.utils.language_detector import detect_language
 
-PROJECT_ROOT = Path(__file__).resolve().parent.parent.parent
-DEFAULT_MODEL_PATH = (
-    PROJECT_ROOT
-    / "models"
-    / "kinya-flex-tts"
-    / "kinya_flex_tts_base_trained.pt"
-)
+from src.runtime.model_paths import resolve_kinya_flex_checkpoint
+
+DEFAULT_MODEL_PATH = resolve_kinya_flex_checkpoint()
 DEFAULT_SAMPLE_RATE = 24000
 
 

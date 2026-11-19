@@ -5,8 +5,10 @@ from src.tts.kinya_flex_engine import KinyaFlexTTSEngine
 from src.tts.piper_engine import PiperTTSEngine
 from src.utils.language_detector import LanguageDetectionResult, detect_language
 
-PROJECT_ROOT = Path(__file__).resolve().parent.parent.parent
-DEFAULT_OUTPUT_DIR = PROJECT_ROOT / "outputs" / "tts_responses"
+from src.runtime.model_paths import get_output_root, get_project_root
+
+PROJECT_ROOT = get_project_root()
+DEFAULT_OUTPUT_DIR = get_output_root() / "tts_responses"
 LATEST_RESPONSE_FILENAME = "latest_response.wav"
 
 SUPPORTED_TTS_LANGUAGES = frozenset({"rw", "en", "fr"})

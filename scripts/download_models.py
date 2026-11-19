@@ -25,67 +25,77 @@ from typing import Dict, Any, Optional
 
 # Resolve Project Root
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
+if str(PROJECT_ROOT) not in sys.path:
+    sys.path.insert(0, str(PROJECT_ROOT))
 
-# Model specifications
-PIPER_VOICES: Dict[str, Dict[str, Any]] = {
-    "piper-en": {
-        "name": "Piper TTS — English (en_US-ljspeech-medium)",
-        "repo_id": "rhasspy/piper-voices",
-        "files": [
-            {
-                "filename": "en/en_US/ljspeech/medium/en_US-ljspeech-medium.onnx",
-                "expected_filename": "en_US-ljspeech-medium.onnx",
-            },
-            {
-                "filename": "en/en_US/ljspeech/medium/en_US-ljspeech-medium.onnx.json",
-                "expected_filename": "en_US-ljspeech-medium.onnx.json",
-            },
-        ],
-        "dest_dir": PROJECT_ROOT / "models" / "piper" / "en_US-ljspeech-medium",
-        "approx_size_bytes": 70_000_000,
-        "verify_sha256": False,
-    },
-    "piper-fr": {
-        "name": "Piper TTS — French (fr_FR-siwis-medium)",
-        "repo_id": "rhasspy/piper-voices",
-        "files": [
-            {
-                "filename": "fr/fr_FR/siwis/medium/fr_FR-siwis-medium.onnx",
-                "expected_filename": "fr_FR-siwis-medium.onnx",
-            },
-            {
-                "filename": "fr/fr_FR/siwis/medium/fr_FR-siwis-medium.onnx.json",
-                "expected_filename": "fr_FR-siwis-medium.onnx.json",
-            },
-        ],
-        "dest_dir": PROJECT_ROOT / "models" / "piper" / "fr_FR-siwis-medium",
-        "approx_size_bytes": 70_000_000,
-        "verify_sha256": False,
-    },
-}
+from src.runtime.model_paths import get_models_root  # noqa: E402
 
-MODELS: Dict[str, Dict[str, Any]] = {
-    "llm": {
-        "name": "AfriqueQwen3.5-4B-Instruct GGUF",
-        "repo_id": "mradermacher/AfriqueQwen3.5-4B-Instruct-v1-i1-GGUF",
-        "filename": "AfriqueQwen3.5-4B-Instruct-v1.i1-Q4_K_M.gguf",
-        "dest_dir": PROJECT_ROOT / "models" / "afriqueqwen",
-        "expected_filename": "AfriqueQwen3.5-4B-Instruct-v1.i1-Q4_K_M.gguf",
-        "expected_sha256": "86c212f91f44a66993d17be425eabdb85da63724d63e0c4430e0624aedf367f6",
-        "approx_size_bytes": 3_066_385_984,  # ~2.86 GB
-        "verify_sha256": True,
-    },
-    "tts": {
-        "name": "KinyaFlex TTS Base Checkpoint",
-        "repo_id": "C4IR-RW/kinya-flex-tts",
-        "filename": "kinya_flex_tts_base_trained.pt",
-        "dest_dir": PROJECT_ROOT / "models" / "kinya-flex-tts",
-        "expected_filename": "kinya_flex_tts_base_trained.pt",
-        "expected_sha256": "e7fcd3d65046405a327a8d1ec73e7b66209eec903ba5219aaf6afc2a4ba8b041",
-        "approx_size_bytes": 1_111_271_099,  # ~1.03 GB
-        "verify_sha256": True,
-    },
-}
+
+def build_model_specs(models_root: Optional[Path] = None) -> tuple[Dict[str, Dict[str, Any]], Dict[str, Dict[str, Any]]]:
+    """Build download specs using centralized models root (local or Google Drive)."""
+    root = Path(models_root) if models_root else get_models_root()
+    piper = {
+        "piper-en": {
+            "name": "Piper TTS — English (en_US-ljspeech-medium)",
+            "repo_id": "rhasspy/piper-voices",
+            "files": [
+                {
+                    "filename": "en/en_US/ljspeech/medium/en_US-ljspeech-medium.onnx",
+                    "expected_filename": "en_US-ljspeech-medium.onnx",
+                },
+                {
+                    "filename": "en/en_US/ljspeech/medium/en_US-ljspeech-medium.onnx.json",
+                    "expected_filename": "en_US-ljspeech-medium.onnx.json",
+                },
+            ],
+            "dest_dir": root / "piper" / "en_US-ljspeech-medium",
+            "approx_size_bytes": 70_000_000,
+            "verify_sha256": False,
+        },
+        "piper-fr": {
+            "name": "Piper TTS — French (fr_FR-siwis-medium)",
+            "repo_id": "rhasspy/piper-voices",
+            "files": [
+                {
+                    "filename": "fr/fr_FR/siwis/medium/fr_FR-siwis-medium.onnx",
+                    "expected_filename": "fr_FR-siwis-medium.onnx",
+                },
+                {
+                    "filename": "fr/fr_FR/siwis/medium/fr_FR-siwis-medium.onnx.json",
+                    "expected_filename": "fr_FR-siwis-medium.onnx.json",
+                },
+            ],
+            "dest_dir": root / "piper" / "fr_FR-siwis-medium",
+            "approx_size_bytes": 70_000_000,
+            "verify_sha256": False,
+        },
+    }
+    models = {
+        "llm": {
+            "name": "AfriqueQwen3.5-4B-Instruct GGUF",
+            "repo_id": "mradermacher/AfriqueQwen3.5-4B-Instruct-v1-i1-GGUF",
+            "filename": "AfriqueQwen3.5-4B-Instruct-v1.i1-Q4_K_M.gguf",
+            "dest_dir": root / "afriqueqwen",
+            "expected_filename": "AfriqueQwen3.5-4B-Instruct-v1.i1-Q4_K_M.gguf",
+            "expected_sha256": "86c212f91f44a66993d17be425eabdb85da63724d63e0c4430e0624aedf367f6",
+            "approx_size_bytes": 3_066_385_984,
+            "verify_sha256": True,
+        },
+        "tts": {
+            "name": "KinyaFlex TTS Base Checkpoint",
+            "repo_id": "C4IR-RW/kinya-flex-tts",
+            "filename": "kinya_flex_tts_base_trained.pt",
+            "dest_dir": root / "kinya-flex-tts",
+            "expected_filename": "kinya_flex_tts_base_trained.pt",
+            "expected_sha256": "e7fcd3d65046405a327a8d1ec73e7b66209eec903ba5219aaf6afc2a4ba8b041",
+            "approx_size_bytes": 1_111_271_099,
+            "verify_sha256": True,
+        },
+    }
+    return models, piper
+
+
+MODELS, PIPER_VOICES = build_model_specs()
 
 
 def compute_sha256(filepath: Path) -> str:
@@ -292,7 +302,19 @@ def main():
         action="store_true",
         help="Force re-download even if local file exists.",
     )
+    parser.add_argument(
+        "--models-dir",
+        type=str,
+        default=None,
+        help="Override model storage root (or set MWIZERWA_MODELS_DIR).",
+    )
     args = parser.parse_args()
+
+    global MODELS, PIPER_VOICES
+    if args.models_dir:
+        os.environ["MWIZERWA_MODELS_DIR"] = str(Path(args.models_dir).expanduser())
+    MODELS, PIPER_VOICES = build_model_specs()
+    print(f"Models root: {get_models_root()}\n")
 
     if args.model == "all":
         target_keys = ["llm", "tts", "piper-en", "piper-fr"]

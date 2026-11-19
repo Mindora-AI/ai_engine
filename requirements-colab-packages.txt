@@ -1,0 +1,13 @@
+# MWIZERWA dependencies for Google Colab (excludes torch/torchaudio/llama-cpp).
+# Colab provides PyTorch; llama-cpp-python is installed via scripts/colab_runtime.py.
+
+jinja2>=3.1.0
+transformers>=4.38.0
+numpy>=1.24.0
+scipy>=1.10.0
+librosa>=0.10.0
+soundfile>=0.12.0
+huggingface_hub>=0.20.0
+psutil>=5.9.0
+piper-tts>=1.2.0
+onnxruntime>=1.16.0

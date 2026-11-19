@@ -64,12 +64,17 @@ ai_engine/
 │   ├── afriqueqwen/           # AfriqueQwen GGUF model file
 │   ├── kinya-flex-tts/        # KinyaFlex TTS PyTorch weights & metadata
 │   └── piper/                 # Piper ONNX voices (en_US-ljspeech-medium, fr_FR-siwis-medium)
+├── config/                    # Model registry (model_registry.json)
+├── notebooks/                 # MWIZERWA_Colab.ipynb
 ├── outputs/                   # Generated evaluation outputs and manifests
 │   ├── prosody_reference_set/ # Reference dataset manifests and inspection reports
 │   └── tts_baseline_evaluation/ # 54-sample baseline TTS benchmark manifest & audio
 ├── scripts/                   # Operational and benchmarking scripts
 │   ├── benchmark_cpu_threads.py
 │   ├── download_models.py     # Verified model downloader with SHA-256 checks
+│   ├── colab_runtime.py       # Colab: Drive, hardware, DeepKIN
+│   ├── colab_validate.py      # Colab: real inference validation
+│   ├── colab_gradio.py        # Colab: Gradio UI
 │   ├── run_tts_baseline_evaluation.py
 │   ├── test_asr.py
 │   └── test_kinya_flex.py
@@ -80,6 +85,7 @@ ai_engine/
 │   ├── llm/                   # ConversationManager, prompts, cleaner, parser
 │   ├── safety/                # Gate 1 evaluator, Gate 2 assistant policy, guardrails
 │   ├── tts/                   # TTS router, KinyaFlex engine, Piper engine
+│   ├── runtime/               # Configurable paths (local / Drive)
 │   └── utils/                 # Tri-lingual language detector and helpers
 ├── tests/                     # 298 Automated regression and behavioral tests
 │   ├── behavioral/            # Multi-turn behavioral fidelity test suite (28 tests)
@@ -175,3 +181,4 @@ For in-depth guides, consult the dedicated documentation files:
 - [Model and TTS Guide](docs/MODELS_AND_AUDIO.md)
 - [Troubleshooting Guide](docs/TROUBLESHOOTING.md)
 - [Developer Handover](docs/DEVELOPER_HANDOVER.md)
+- [Google Colab Deployment](docs/COLAB.md)

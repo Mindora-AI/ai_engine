@@ -2,8 +2,9 @@ import wave
 from pathlib import Path
 from typing import Dict, Optional, Union
 
-PROJECT_ROOT = Path(__file__).resolve().parent.parent.parent
-PIPER_VOICES_ROOT = PROJECT_ROOT / "models" / "piper"
+from src.runtime.model_paths import resolve_piper_voices_root
+
+PIPER_VOICES_ROOT = resolve_piper_voices_root()
 
 PIPER_VOICE_SPECS: Dict[str, Dict[str, str]] = {
     "en": {

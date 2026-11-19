@@ -4,14 +4,11 @@ from typing import List, Dict, Any, Optional
 
 _DEFAULT_MAX_TOKENS = int(os.environ.get("MWIZERWA_LLM_MAX_TOKENS", "768"))
 
-# Resolve Project Root
-PROJECT_ROOT = Path(__file__).resolve().parent.parent.parent
-DEFAULT_MODEL_PATH = (
-    PROJECT_ROOT
-    / "models"
-    / "afriqueqwen"
-    / "AfriqueQwen3.5-4B-Instruct-v1.i1-Q4_K_M.gguf"
-)
+from src.runtime.model_paths import get_project_root, resolve_llm_gguf_path
+
+PROJECT_ROOT = get_project_root()
+DEFAULT_MODEL_PATH = resolve_llm_gguf_path()
+_DEFAULT_N_GPU_LAYERS = int(os.environ.get("MWIZERWA_LLM_N_GPU_LAYERS", "0"))
 
 
 # Structured Response JSON Schema for GBNF grammar-constrained generation.
@@ -46,7 +43,7 @@ class AfriqueQwenLLM:
         model_path: Path = DEFAULT_MODEL_PATH,
         n_ctx: int = 4096,
         n_threads: int = 4,
-        n_gpu_layers: int = 0,
+        n_gpu_layers: Optional[int] = None,
         temperature: float = 0.7,
         top_p: float = 0.9,
         max_tokens: int = _DEFAULT_MAX_TOKENS,
@@ -54,7 +51,9 @@ class AfriqueQwenLLM:
         self.model_path = Path(model_path)
         self.n_ctx = n_ctx
         self.n_threads = n_threads
-        self.n_gpu_layers = n_gpu_layers
+        self.n_gpu_layers = (
+            _DEFAULT_N_GPU_LAYERS if n_gpu_layers is None else n_gpu_layers
+        )
         self.temperature = temperature
         self.top_p = top_p
         self.max_tokens = max_tokens

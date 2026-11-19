@@ -1,0 +1,110 @@
+{
+  "schema_version": 1,
+  "description": "MWIZERWA authoritative model registry (sources, paths, integrity).",
+  "models_root_env": "MWIZERWA_MODELS_DIR",
+  "assets": [
+    {
+      "id": "llm",
+      "name": "AfriqueQwen3.5-4B-Instruct-v1 Q4_K_M",
+      "format": "GGUF",
+      "approx_size_gb": 2.86,
+      "relative_path": "afriqueqwen/AfriqueQwen3.5-4B-Instruct-v1.i1-Q4_K_M.gguf",
+      "source": {
+        "type": "huggingface",
+        "repo_id": "mradermacher/AfriqueQwen3.5-4B-Instruct-v1-i1-GGUF",
+        "filename": "AfriqueQwen3.5-4B-Instruct-v1.i1-Q4_K_M.gguf"
+      },
+      "sha256": "86c212f91f44a66993d17be425eabdb85da63724d63e0c4430e0624aedf367f6",
+      "loader": "src.llm.afrique_qwen.AfriqueQwenLLM",
+      "gpu_capable": true,
+      "lazy_load": true,
+      "license_note": "Follow AfriqueQwen / GGUF distributor terms on Hugging Face."
+    },
+    {
+      "id": "kinya-flex-tts",
+      "name": "KinyaFlex TTS base checkpoint",
+      "format": "PyTorch",
+      "approx_size_gb": 1.03,
+      "relative_path": "kinya-flex-tts/kinya_flex_tts_base_trained.pt",
+      "source": {
+        "type": "huggingface",
+        "repo_id": "C4IR-RW/kinya-flex-tts",
+        "filename": "kinya_flex_tts_base_trained.pt"
+      },
+      "sha256": "e7fcd3d65046405a327a8d1ec73e7b66209eec903ba5219aaf6afc2a4ba8b041",
+      "loader": "src.tts.kinya_flex_engine.KinyaFlexTTSEngine",
+      "gpu_capable": true,
+      "lazy_load": true,
+      "license_note": "Follow C4IR-RW / KinyaFlex repository license."
+    },
+    {
+      "id": "piper-en",
+      "name": "Piper en_US-ljspeech-medium",
+      "format": "ONNX",
+      "approx_size_mb": 64,
+      "relative_path": "piper/en_US-ljspeech-medium",
+      "source": {
+        "type": "huggingface",
+        "repo_id": "rhasspy/piper-voices",
+        "files": [
+          "en/en_US/ljspeech/medium/en_US-ljspeech-medium.onnx",
+          "en/en_US/ljspeech/medium/en_US-ljspeech-medium.onnx.json"
+        ]
+      },
+      "loader": "src.tts.piper_engine.PiperTTSEngine",
+      "gpu_capable": false,
+      "lazy_load": true,
+      "license_note": "rhasspy/piper-voices (see voice MODEL_CARD)."
+    },
+    {
+      "id": "piper-fr",
+      "name": "Piper fr_FR-siwis-medium",
+      "format": "ONNX",
+      "approx_size_mb": 64,
+      "relative_path": "piper/fr_FR-siwis-medium",
+      "source": {
+        "type": "huggingface",
+        "repo_id": "rhasspy/piper-voices",
+        "files": [
+          "fr/fr_FR/siwis/medium/fr_FR-siwis-medium.onnx",
+          "fr/fr_FR/siwis/medium/fr_FR-siwis-medium.onnx.json"
+        ]
+      },
+      "loader": "src.tts.piper_engine.PiperTTSEngine",
+      "gpu_capable": false,
+      "lazy_load": true,
+      "license_note": "rhasspy/piper-voices (see voice MODEL_CARD)."
+    },
+    {
+      "id": "asr",
+      "name": "Kinyarwanda Health ASR",
+      "format": "HuggingFace transformers",
+      "approx_size_mb": 950,
+      "relative_path": null,
+      "source": {
+        "type": "huggingface",
+        "repo_id": "ElvisTata2024/Kinyarwanda-Health-ASR",
+        "cache_env": "HF_HOME"
+      },
+      "loader": "src.asr.asr_engine.ASREngine",
+      "gpu_capable": true,
+      "lazy_load": true,
+      "language_note": "Trained for Kinyarwanda health-domain speech; other languages are best-effort only."
+    },
+    {
+      "id": "deepkin-agai",
+      "name": "DeepKIN-AgAI (KinyaFlex dependency)",
+      "format": "Python package",
+      "relative_path": "ac-ai-models/DeepKIN-AgAI",
+      "source": {
+        "type": "git",
+        "url": "https://github.com/c4ir-rw/ac-ai-models.git",
+        "subpackage": "DeepKIN-AgAI",
+        "pinned_commit": "c28db6bfb6b80666583717c87e8edaa2a8f384d5"
+      },
+      "loader": "pip editable install",
+      "lazy_load": false,
+      "license_note": "Required for KinyaFlex inference only."
+    }
+  ]
+}
