@@ -19,7 +19,9 @@ asr = pipeline(
 print("ASR model loaded!")
 
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
-audio_file = PROJECT_ROOT / "test.wav"
+audio_file = PROJECT_ROOT / "kinyarwanda.wav"
+if not audio_file.exists():
+    audio_file = PROJECT_ROOT / "test.wav"
 
 print(f"Audio file: {audio_file}")
 

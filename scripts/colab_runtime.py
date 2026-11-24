@@ -550,6 +550,38 @@ def diagnose_colab_dependencies() -> Dict[str, Any]:
     return info
 
 
+def _ensure_deepkin_prerequisites(project_root: Path) -> None:
+    """
+    DeepKIN is installed with --no-deps; install runtime deps explicitly.
+    NumPy must stay <2.5 for Numba (librosa/ASR on Colab).
+    """
+    project_root = Path(project_root)
+    constraints = project_root / "constraints-colab.txt"
+    pip_args = ["install", "typed-argument-parser", "numpy>=1.24.0,<2.5"]
+    if constraints.is_file():
+        pip_args = ["install", "-c", str(constraints), *pip_args[1:]]
+    _pip(pip_args, step="DeepKIN prerequisites (typed-argument-parser, numpy<2.5)")
+
+
+def _verify_deepkin_imports_subprocess() -> None:
+    script = (
+        "from tap import Tap; "
+        "import deepkin; "
+        "from deepkin.models.flex_tts import FlexKinyaTTS; "
+        "print('deepkin', deepkin.__file__)"
+    )
+    result = subprocess.run(
+        [sys.executable, "-c", script],
+        capture_output=True,
+        text=True,
+    )
+    if result.returncode != 0:
+        raise RuntimeError(
+            "DeepKIN import verification failed:\n" + (result.stderr or result.stdout)
+        )
+    print(f"[DeepKIN] Verified: {result.stdout.strip()}")
+
+
 def install_deepkin(
     project_root: Path,
     pinned_commit: str = PINNED_DEEPKIN_COMMIT,
@@ -559,11 +591,14 @@ def install_deepkin(
     Required for Kinyarwanda synthesis — not optional on Colab.
     """
     project_root = Path(project_root)
+    _ensure_deepkin_prerequisites(project_root)
+
     dest = project_root / "ac-ai-models"
     pkg_dir = dest / "DeepKIN-AgAI"
     repo_url = "https://github.com/c4ir-rw/ac-ai-models.git"
 
     if deepkin_importable():
+        _verify_deepkin_imports_subprocess()
         print("[DeepKIN] deepkin already importable — skipping reinstall.")
         return {"status": "already_installed", "package_dir": str(pkg_dir)}
 
@@ -643,23 +678,7 @@ def install_deepkin(
     import importlib
 
     importlib.invalidate_caches()
-    verify = subprocess.run(
-        [
-            sys.executable,
-            "-c",
-            "import deepkin; from deepkin.models.flex_tts import FlexKinyaTTS; "
-            "print('deepkin', deepkin.__file__)",
-        ],
-        capture_output=True,
-        text=True,
-    )
-    if verify.returncode != 0:
-        raise RuntimeError(
-            "DeepKIN install finished but subprocess import failed:\n"
-            + (verify.stderr or verify.stdout)
-            + f"\nInterpreter: {sys.executable}"
-        )
-    print(f"[DeepKIN] Verified: {verify.stdout.strip()}")
+    _verify_deepkin_imports_subprocess()
     return {"status": "installed", "package_dir": str(pkg_dir), "commit": pinned_commit}
 
 

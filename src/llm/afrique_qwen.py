@@ -1,3 +1,4 @@
+import json
 import os
 from pathlib import Path
 from typing import List, Dict, Any, Optional
@@ -208,17 +209,24 @@ class AfriqueQwenLLM:
         llm = self.load_model()
         return len(llm.tokenize(text.encode("utf-8"), add_bos=False, special=True))
 
-    def _effective_max_tokens(self, messages: List[Dict[str, str]]) -> int:
+    def _effective_max_tokens(
+        self,
+        messages: List[Dict[str, str]],
+        *,
+        prompt_tokens: Optional[int] = None,
+        completion_cap: Optional[int] = None,
+    ) -> int:
         """Cap completion length so prompt + generation fits within n_ctx."""
-        prompt_tokens = self.count_tokens(messages)
+        pt = prompt_tokens if prompt_tokens is not None else self.count_tokens(messages)
+        cap = completion_cap if completion_cap is not None else self.max_tokens
         slack = 8
-        available = self.n_ctx - prompt_tokens - slack
+        available = self.n_ctx - pt - slack
         if available < 32:
             raise ValueError(
-                f"Prompt uses {prompt_tokens} tokens; only {available} remain in n_ctx={self.n_ctx}. "
+                f"Prompt uses {pt} tokens; only {available} remain in n_ctx={self.n_ctx}. "
                 "Shorten the conversation or reduce input length."
             )
-        return min(self.max_tokens, available)
+        return min(cap, available)
 
     def generate_completion(self, messages: List[Dict[str, str]]) -> str:
         """
@@ -272,3 +280,50 @@ class AfriqueQwenLLM:
 
         content = choice.get("message", {}).get("content", "")
         return content or ""
+
+    def generate_auxiliary_json(
+        self,
+        messages: List[Dict[str, str]],
+        schema: Dict[str, Any],
+        max_tokens: int = 256,
+    ) -> Dict[str, Any]:
+        """
+        Auxiliary structured JSON generation (summaries, memory extraction).
+        Not used for the primary conversational response contract.
+        """
+        llm = self.load_model()
+        prompt_tokens = self.count_tokens(messages)
+        effective_max = self._effective_max_tokens(
+            messages,
+            prompt_tokens=prompt_tokens,
+            completion_cap=max_tokens,
+        )
+
+        response_fmt = {"type": "json_object", "schema": schema}
+        completion_kwargs = dict(
+            messages=messages,
+            temperature=min(self.temperature, 0.5),
+            top_p=self.top_p,
+            max_tokens=effective_max,
+        )
+        try:
+            response = llm.create_chat_completion(
+                **completion_kwargs,
+                response_format=response_fmt,
+            )
+        except Exception as e:
+            print(f"[LLM Warning] Auxiliary schema failed ({e}); using generic json_object.")
+            response = llm.create_chat_completion(
+                **completion_kwargs,
+                response_format={"type": "json_object"},
+            )
+
+        choices = response.get("choices", [])
+        if not choices:
+            raise ValueError("Empty auxiliary completion")
+
+        content = choices[0].get("message", {}).get("content", "") or ""
+        data = json.loads(content)
+        if not isinstance(data, dict):
+            raise ValueError("Auxiliary completion is not a JSON object")
+        return data

@@ -11,19 +11,9 @@ if str(PROJECT_ROOT) not in sys.path:
 from src.llm.conversation import ConversationManager
 from src.conversation.session import TurnRequest, TurnResult, ConversationMode
 from src.conversation.engine import ConversationEngine
+from src.conversation.compat import ensure_conversation_engine as _ensure_engine
 from src.asr.asr_engine import ASREngine
 from src.tts.tts_engine import TTSEngine, UnsupportedTTSLanguageError, TTSSynthesisError
-
-
-def _ensure_engine(target: Union[ConversationEngine, ConversationManager]) -> ConversationEngine:
-    """
-    Ensures the target handler is a ConversationEngine.
-    If a ConversationManager is passed (e.g. from existing test suites or external callers),
-    wraps it in a ConversationEngine to maintain complete backward compatibility.
-    """
-    if isinstance(target, ConversationEngine):
-        return target
-    return ConversationEngine(manager=target)
 
 
 def run_text_mode(engine: Union[ConversationEngine, ConversationManager]):

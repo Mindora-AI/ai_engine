@@ -3,7 +3,10 @@ MWIZERWA AI — Conversation Engine
 Orchestration layer coordinating conversational turn execution around ConversationManager.
 """
 
-from typing import Optional, List, Dict, Any
+from typing import TYPE_CHECKING, Optional, List, Dict, Any
+
+if TYPE_CHECKING:
+    from src.memory.coordinator import MemoryCoordinator
 from src.llm.conversation import ConversationManager
 from src.conversation.session import SessionState, TurnRequest, TurnResult, ConversationMode
 from src.utils.language_detector import LanguageDetector, LanguageDetectionResult
@@ -51,6 +54,7 @@ class ConversationEngine:
         assistant_validator: Optional[AssistantSafetyValidator] = None,
         recommender: Optional[ExerciseRecommender] = None,
         lifecycle: Optional[ExerciseLifecycle] = None,
+        memory_coordinator: Optional["MemoryCoordinator"] = None,
     ):
         self._safety_evaluator = safety_evaluator if safety_evaluator is not None else SafetyEvaluator()
         self._safety_guardrail = safety_guardrail if safety_guardrail is not None else SafetyGuardrail()
@@ -64,6 +68,11 @@ class ConversationEngine:
         self._detector = language_detector if language_detector is not None else LanguageDetector()
         self._recommender = recommender if recommender is not None else ExerciseRecommender()
         self._lifecycle = lifecycle if lifecycle is not None else ExerciseLifecycle()
+        self._memory = memory_coordinator
+
+    @property
+    def memory_coordinator(self) -> Optional["MemoryCoordinator"]:
+        return self._memory
 
     @property
     def safety_evaluator(self) -> SafetyEvaluator:
@@ -362,12 +371,17 @@ class ConversationEngine:
             last_parsed_prev.requires_clarification if last_parsed_prev else False
         )
 
+        persistent_memory = ""
+        if self._memory and request.user_id:
+            persistent_memory = self._memory.get_approved_summary_text(request.user_id)
+
         response_text = self._manager.generate_response(
             cleaned_text,
             detected_language=lang_result,
             mode=self._state.mode,
             ambiguous_language=is_ambiguous_language,
             requires_clarification=prev_requires_clarification,
+            persistent_memory_summary=persistent_memory,
         )
 
         last_parsed = getattr(self._manager, "last_parsed_response", None)
@@ -391,7 +405,7 @@ class ConversationEngine:
                     self._manager.messages[-1]["content"] = combined_text
                 response_text = combined_text
 
-        return self._build_turn_result(
+        result = self._build_turn_result(
             response_text,
             target_lang,
             lang_result,
@@ -400,6 +414,24 @@ class ConversationEngine:
             request.user_text,
             life_res,
         )
+
+        if self._memory and request.user_id and response_text.strip():
+            proposals = self._memory.propose_from_turn(
+                request.user_id,
+                cleaned_text,
+                response_text,
+                language=target_lang,
+            )
+            if proposals:
+                result.metadata["memory_proposals"] = [
+                    p.to_public_dict() for p in proposals
+                ]
+
+        rolling = getattr(self._manager, "rolling_summary", "") or ""
+        if rolling.strip():
+            result.metadata["rolling_summary_active"] = True
+
+        return result
 
     def _build_turn_result(
         self,

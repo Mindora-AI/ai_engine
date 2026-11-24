@@ -9,7 +9,7 @@ from src.conversation.session import (
 )
 from src.conversation.engine import ConversationEngine
 from src.llm.conversation import ConversationManager, OversizedMessageError
-from run_assistant import _ensure_engine
+from src.conversation.compat import ensure_conversation_engine as _ensure_engine
 
 
 class TestConversationEngine(unittest.TestCase):

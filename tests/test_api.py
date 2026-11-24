@@ -190,6 +190,59 @@ class TestMWIZERWAApi(unittest.TestCase):
         mock_llm.load_model.assert_called_once()
         self.assertTrue(svc.engine_initialized)
 
+    def test_chat_rejects_unsupported_language(self):
+        r = self.client.post(
+            "/chat",
+            json={"user_text": "Hello", "language": "es"},
+        )
+        self.assertEqual(r.status_code, 422)
+
+    def test_chat_normalizes_language_hint(self):
+        r = self.client.post(
+            "/chat",
+            json={"user_text": "Bonjour", "language": "FR"},
+        )
+        self.assertEqual(r.status_code, 200)
+
+    def test_chat_rejects_blank_session_id(self):
+        r = self.client.post(
+            "/chat",
+            json={"user_text": "Hi", "session_id": "   "},
+        )
+        self.assertEqual(r.status_code, 422)
+
+    def test_chat_session_continuity(self):
+        r1 = self.client.post("/chat", json={"user_text": "Turn one"})
+        sid = r1.json()["session_id"]
+        r2 = self.client.post(
+            "/chat",
+            json={"user_text": "Turn two", "session_id": sid},
+        )
+        self.assertEqual(r2.json()["session_id"], sid)
+        self.assertEqual(self.service.session_count(), 1)
+
+    def test_memory_consent_endpoint_returns_structured_response(self):
+        with patch.dict(os.environ, {"MWIZERWA_ALLOW_DEV_MEMORY_CONSENT": "1"}):
+            r = self.client.post(
+                "/memory/consent",
+                json={
+                    "user_id": "server-user-1",
+                    "proposal_id": "unknown-prop",
+                    "decision": "declined",
+                },
+            )
+        self.assertEqual(r.status_code, 200)
+        data = r.json()
+        self.assertEqual(data["user_id"], "server-user-1")
+        self.assertEqual(data["proposal_id"], "unknown-prop")
+        self.assertFalse(data["summary_updated"])
+
+    def test_chat_internal_error_is_generic(self):
+        self.mock_llm.generate_completion.side_effect = RuntimeError("GPU failure")
+        r = self.client.post("/chat", json={"user_text": "Muraho"})
+        self.assertEqual(r.status_code, 500)
+        self.assertEqual(r.json()["detail"], "Unable to process this message. Please try again.")
+
 
 if __name__ == "__main__":
     unittest.main()

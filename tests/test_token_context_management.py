@@ -63,6 +63,7 @@ class TestTokenAwareContextManagement(unittest.TestCase):
         self.mock_llm.count_tokens.side_effect = dynamic_count
 
         manager = ConversationManager(llm=self.mock_llm, n_ctx=4096, max_tokens=512, safety_margin=16)
+        manager.rolling_summary_enabled = False
 
         manager.generate_response("User 1")
         manager.generate_response("User 2")
@@ -97,6 +98,7 @@ class TestTokenAwareContextManagement(unittest.TestCase):
         self.mock_llm.count_tokens.side_effect = count_func
 
         manager = ConversationManager(llm=self.mock_llm, n_ctx=4096, max_tokens=512)
+        manager.rolling_summary_enabled = False
         manager.generate_response("Turn 1")
         manager.generate_response("Turn 2")
         manager.generate_response("Turn 3")
@@ -120,6 +122,7 @@ class TestTokenAwareContextManagement(unittest.TestCase):
         self.mock_llm.count_tokens.side_effect = count_func
 
         manager = ConversationManager(llm=self.mock_llm, n_ctx=4096, max_tokens=512)
+        manager.rolling_summary_enabled = False
         manager.generate_response("Old turn 1")
         manager.generate_response("Old turn 2")
         manager.generate_response("Newest unique message 12345")
@@ -295,6 +298,7 @@ class TestTokenAwareContextManagement(unittest.TestCase):
         self.mock_llm.count_tokens.side_effect = dynamic_tokens
 
         manager = ConversationManager(llm=self.mock_llm, n_ctx=4096, max_tokens=512, safety_margin=16)
+        manager.rolling_summary_enabled = False
 
         token_cost_map["Heavy 1"] = 800
         token_cost_map["Heavy 2"] = 800

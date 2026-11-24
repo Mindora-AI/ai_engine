@@ -2,3 +2,5 @@
 # Prevents Gradio 4.x after huggingface_hub 1.x is installed (HfFolder removed).
 gradio>=5.7.1,<6
 huggingface_hub>=0.23.2
+# Numba (librosa/ASR) requires NumPy <2.5 on current Colab stacks.
+numpy<2.5

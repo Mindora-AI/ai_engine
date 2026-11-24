@@ -248,7 +248,6 @@ def download_model(key: str, spec: Dict[str, Any], force: bool = False) -> bool:
             repo_id=spec["repo_id"],
             filename=spec["filename"],
             local_dir=str(dest_dir),
-            local_dir_use_symlinks=False,
         )
 
         # Handle filename difference if any

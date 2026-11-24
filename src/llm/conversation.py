@@ -1,5 +1,9 @@
+import os
 from typing import List, Dict, Optional, Tuple, Any
+
 from src.llm.prompts import SYSTEM_PROMPT
+from src.llm.rolling_summary import merge_turns_into_summary, summary_context_message
+from src.memory.types import PendingContextFold
 from src.llm.afrique_qwen import AfriqueQwenLLM
 from src.llm.response_cleaner import clean_response
 from src.llm.response_parser import ParsedResponse, ResponseParsingError, safe_parse_response
@@ -34,6 +38,7 @@ def _format_per_turn_system_prompt(
     mode: Optional[Any] = None,
     ambiguous_language: bool = False,
     requires_clarification: bool = False,
+    persistent_memory_summary: str = "",
 ) -> str:
     """
     Constructs an ephemeral, per-turn system prompt incorporating:
@@ -89,6 +94,12 @@ def _format_per_turn_system_prompt(
         context_lines.append(
             "Clarification Pending: The previous turn indicated that clarification is needed. "
             "Continue clarifying the user's intent before offering advice or exercises."
+        )
+
+    if persistent_memory_summary.strip():
+        context_lines.append(
+            "Approved Persistent Memory (user consented; factual only):\n"
+            f"{persistent_memory_summary.strip()}"
         )
 
     if context_lines:
@@ -164,6 +175,15 @@ class ConversationManager:
                 self.max_tokens = 768
 
         self.messages: List[Dict[str, str]] = []
+        self.rolling_summary: str = ""
+        self.verbatim_tail_turns: int = int(
+            os.environ.get("MWIZERWA_VERBATIM_TAIL_TURNS", "2")
+        )
+        self.rolling_summary_enabled: bool = os.environ.get(
+            "MWIZERWA_ROLLING_SUMMARY", "1"
+        ).strip().lower() not in ("0", "false", "no")
+        self._pending_context_fold: Optional[PendingContextFold] = None
+        self.last_summarization_failed: bool = False
         self.reset_conversation()
 
     def reset_conversation(self) -> None:
@@ -174,9 +194,20 @@ class ConversationManager:
                 "content": self.system_prompt,
             }
         ]
+        self.rolling_summary = ""
+        self._pending_context_fold = None
+        self.last_summarization_failed = False
         self.last_parsed_response = None
         self.last_gate2_triggered = False
         self.last_gate2_violation = None
+
+    def _commit_context_fold_if_any(self) -> None:
+        fold = self._pending_context_fold
+        if fold is None:
+            return
+        if fold.new_rolling_summary.strip():
+            self.rolling_summary = fold.new_rolling_summary
+        self._pending_context_fold = None
 
     def get_available_budget(self) -> int:
         """
@@ -229,6 +260,7 @@ class ConversationManager:
         mode: Optional[Any] = None,
         ambiguous_language: bool = False,
         requires_clarification: bool = False,
+        persistent_memory_summary: str = "",
     ) -> Tuple[List[Dict[str, str]], List[Dict[str, str]]]:
         """
         Prepares and trims candidate messages for a new user turn:
@@ -238,18 +270,26 @@ class ConversationManager:
         3. Returns (candidate_messages, candidate_history).
         Raises OversizedMessageError if the user message cannot fit even with zero history.
         """
+        self._pending_context_fold = None
+        self.last_summarization_failed = False
+
         system_content = _format_per_turn_system_prompt(
             self.system_prompt, detected_language,
             mode=mode,
             ambiguous_language=ambiguous_language,
             requires_clarification=requires_clarification,
+            persistent_memory_summary=persistent_memory_summary,
         )
         candidate_system_msg = {"role": "system", "content": system_content}
         user_msg = {"role": "user", "content": user_text}
         budget = self.get_available_budget()
+        min_tail_msgs = max(0, self.verbatim_tail_turns) * 2
+        summary_blocks: List[Dict[str, str]] = []
+        if self.rolling_summary.strip():
+            summary_blocks = [summary_context_message(self.rolling_summary)]
 
         # Step 1: Check minimal candidate (system prompt + user message)
-        minimal_candidate = [candidate_system_msg, user_msg]
+        minimal_candidate = [candidate_system_msg] + summary_blocks + [user_msg]
         minimal_tokens = self.count_tokens(minimal_candidate)
         if minimal_tokens > budget:
             raise OversizedMessageError(
@@ -261,21 +301,56 @@ class ConversationManager:
 
         # Step 2: Build candidate history from official history (excluding system prompt at index 0)
         candidate_history = list(self.messages[1:])
+        removed_for_summary: List[Dict[str, str]] = []
 
         # If max_turns is configured, enforce turn cap (accounting for the new turn being added)
         if self.max_turns is not None:
             max_prior_messages = max(0, self.max_turns - 1) * 2
             while len(candidate_history) > max_prior_messages:
+                removed_for_summary.extend(candidate_history[:2])
                 candidate_history = candidate_history[2:]
 
-        # Step 3: Trim oldest complete turn pairs until candidate fits within budget
-        candidate_messages = [candidate_system_msg] + candidate_history + [user_msg]
-        while (
-            len(candidate_history) >= 2
-            and self.count_tokens(candidate_messages) > budget
+        def _assemble( history: List[Dict[str, str]], summary: str) -> List[Dict[str, str]]:
+            blocks = [summary_context_message(summary)] if summary.strip() else summary_blocks
+            return [candidate_system_msg] + blocks + history + [user_msg]
+
+        working_summary = self.rolling_summary
+        candidate_messages = _assemble(candidate_history, working_summary)
+
+        # Step 3: Fold older turns into rolling summary when over budget; keep verbatim tail.
+        while len(candidate_history) > min_tail_msgs and self.count_tokens(candidate_messages) > budget:
+            pair = candidate_history[:2]
+            if self.rolling_summary_enabled:
+                merged = merge_turns_into_summary(self.llm, working_summary, pair)
+                if not merged:
+                    self.last_summarization_failed = True
+                    break
+                working_summary = merged
+                candidate_history = candidate_history[2:]
+                removed_for_summary.extend(pair)
+                candidate_messages = _assemble(candidate_history, working_summary)
+            else:
+                break
+
+        # Fallback trim only when rolling summary is disabled (legacy drop-oldest behavior).
+        if (
+            not self.rolling_summary_enabled
+            and not self.last_summarization_failed
         ):
-            candidate_history = candidate_history[2:]
-            candidate_messages = [candidate_system_msg] + candidate_history + [user_msg]
+            while (
+                len(candidate_history) >= 2
+                and self.count_tokens(candidate_messages) > budget
+            ):
+                removed_for_summary.extend(candidate_history[:2])
+                candidate_history = candidate_history[2:]
+                candidate_messages = _assemble(candidate_history, working_summary)
+
+        if removed_for_summary:
+            self._pending_context_fold = PendingContextFold(
+                removed_history=removed_for_summary,
+                new_rolling_summary=working_summary,
+                retained_history=list(candidate_history),
+            )
 
         # Step 4: Final verification
         candidate_tokens = self.count_tokens(candidate_messages)
@@ -294,6 +369,7 @@ class ConversationManager:
         mode: Optional[Any] = None,
         ambiguous_language: bool = False,
         requires_clarification: bool = False,
+        persistent_memory_summary: str = "",
     ) -> str:
         """
         Generates a response for a user message, maintaining context and handling errors.
@@ -315,6 +391,7 @@ class ConversationManager:
             mode=mode,
             ambiguous_language=ambiguous_language,
             requires_clarification=requires_clarification,
+            persistent_memory_summary=persistent_memory_summary,
         )
 
         try:
@@ -362,6 +439,7 @@ class ConversationManager:
                     {"role": "user", "content": user_text},
                     {"role": "assistant", "content": safe_fallback},
                 ]
+                self._commit_context_fold_if_any()
                 return safe_fallback
 
             # Gate 2 Check B: Also evaluate candidate text using user-risk evaluator
@@ -393,6 +471,7 @@ class ConversationManager:
                     {"role": "user", "content": user_text},
                     {"role": "assistant", "content": safe_fallback},
                 ]
+                self._commit_context_fold_if_any()
                 return safe_fallback
 
             # Gate 2 passed: safe model output
@@ -406,6 +485,7 @@ class ConversationManager:
                 {"role": "user", "content": user_text},
                 {"role": "assistant", "content": final_response_text},
             ]
+            self._commit_context_fold_if_any()
 
             return final_response_text
         except Exception as e:
@@ -413,6 +493,7 @@ class ConversationManager:
             self.last_parsed_response = None
             self.last_gate2_triggered = False
             self.last_gate2_violation = None
+            self._pending_context_fold = None
             print(f"Error during LLM inference: {e}")
             raise e
 
@@ -436,9 +517,11 @@ class ConversationManager:
             return
 
         candidate_messages, candidate_history = self.prepare_candidate_messages(
-            user_text, detected_language=detected_language
+            user_text, detected_language=detected_language,
+            persistent_memory_summary="",
         )
         self.messages = [self.messages[0]] + candidate_history + [
             {"role": "user", "content": user_text},
             {"role": "assistant", "content": response_text},
         ]
+        self._commit_context_fold_if_any()

@@ -153,10 +153,15 @@ def _unescape_partial_json_string(fragment: str) -> str:
         return cleaned.strip()
 
 
+_MIN_SALVAGE_RESPONSE_CHARS = 40
+
+
 def salvage_truncated_contract(text: str) -> Optional[ParsedResponse]:
     """
     Recover user-facing text when generation stops at max_tokens mid-JSON.
     Returns None if the payload does not look like a truncated contract object.
+    Short or placeholder fragments (e.g. '{"response_text": "Incomplete json...')
+    are not recovered — those are treated as malformed model output.
     """
     payload = extract_json_payload(text)
     if not payload or '"response_text"' not in payload:
@@ -174,7 +179,7 @@ def salvage_truncated_contract(text: str) -> Optional[ParsedResponse]:
 
     raw_value = match.group(1)
     response_text = _unescape_partial_json_string(raw_value).strip()
-    if not response_text:
+    if not response_text or len(response_text) < _MIN_SALVAGE_RESPONSE_CHARS:
         return None
 
     return ParsedResponse(

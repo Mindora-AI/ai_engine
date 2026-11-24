@@ -42,20 +42,47 @@ Environment: `MWIZERWA_API_HOST`, `MWIZERWA_API_PORT`, `MWIZERWA_MODELS_DIR`, `M
 
 ---
 
-## `POST /chat`
+## `POST /chat` (Stage 1 — text conversation)
 
-**JSON body**
+Primary integration surface for the main Mwizerwa application.
+
+### Supported languages
+
+| Code | Language |
+|------|----------|
+| `rw` | Kinyarwanda |
+| `en` | English |
+| `fr` | French |
+
+Optional `language` must be one of these codes (case-insensitive). Unsupported values return **422**.
+
+### Session behavior
+
+- **`session_id` omitted:** server assigns a new UUID; history starts empty (system prompt only).
+- **Same `session_id` on later requests:** prior user/assistant turns for that id are kept in memory and passed into the model with token-aware trimming.
+- **Different `session_id` values:** isolated histories (in-memory map in the API process).
+- **Durability:** sessions are **not** persisted. Process restart or deploy clears all context. There is no cross-device or permanent memory.
+- **`session_id` constraints:** non-empty after trim, max 128 characters.
+
+### Request body
 
 ```json
 {
   "user_text": "Muraho",
-  "session_id": "optional-uuid",
+  "session_id": "optional-client-id",
   "mode": "normal",
   "language": null
 }
 ```
 
-**Response**
+| Field | Required | Notes |
+|-------|----------|--------|
+| `user_text` | yes | Non-empty after trim |
+| `session_id` | no | Client-provided id for continuity |
+| `mode` | no | `gentle` \| `normal` \| `motivational` |
+| `language` | no | Hint: `rw` \| `en` \| `fr` |
+
+### Response
 
 ```json
 {
@@ -63,9 +90,33 @@ Environment: `MWIZERWA_API_HOST`, `MWIZERWA_API_PORT`, `MWIZERWA_MODELS_DIR`, `M
   "response_text": "...",
   "mode": "normal",
   "language": "rw",
-  "metadata": {}
+  "metadata": {
+    "interaction_intent": "LISTENING",
+    "requires_clarification": false,
+    "detected_language": "rw",
+    "gate1_triggered": false,
+    "gate2_triggered": false
+  }
 }
 ```
+
+`metadata` only includes keys from the public allowlist (no raw safety objects or internal paths).
+
+### Errors
+
+| Status | When |
+|--------|------|
+| **422** | Empty `user_text`, invalid `language`, invalid `session_id`, or schema violation |
+| **503** | LLM not loaded (`/health` → `unavailable`) |
+| **500** | Unexpected inference failure (generic message; no stack trace) |
+
+### Model readiness
+
+`POST /chat` requires the shared AfriqueQwen GGUF to be loaded at API startup (`engine_initialized: true` on `/health`). No external network calls are made per chat request once the model is loaded.
+
+### Optional `user_id` (persistent memory)
+
+Supply only from a **trusted application backend** after authentication. When set, the engine may return `metadata.memory_proposals` for consent UI. Approved memory is injected into future turns; see [MEMORY.md](MEMORY.md).
 
 ---
 

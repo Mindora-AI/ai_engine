@@ -17,9 +17,13 @@ from src.api.schemas import (
     ChatResponse,
     ErrorResponse,
     HealthResponse,
+    MemoryConsentRequest,
+    MemoryConsentResponse,
     TranscribeResponse,
     VoiceResponse,
 )
+from src.memory.consent import ConsentDecision
+from src.memory.dev_consent import dev_memory_consent_enabled
 from src.api.service import _public_metadata, get_api_service
 from src.tts.tts_engine import TTSSynthesisError, UnsupportedTTSLanguageError
 
@@ -84,6 +88,7 @@ def chat(body: ChatRequest):
             session_id=body.session_id,
             mode=body.mode,
             language=body.language,
+            user_id=body.user_id,
         )
     except ValueError as e:
         raise HTTPException(
@@ -103,6 +108,38 @@ def chat(body: ChatRequest):
         mode=result.mode.value,
         language=result.language,
         metadata=_public_metadata(result.metadata),
+    )
+
+
+@app.post(
+    "/memory/consent",
+    response_model=MemoryConsentResponse,
+    summary="Mock memory consent (development — application backend replaces this)",
+)
+def memory_consent(body: MemoryConsentRequest):
+    """
+    Simulated user consent for persistent memory proposals.
+    Production: the Mwizerwa app records consent after UI interaction and calls a trusted internal API.
+    """
+    if not dev_memory_consent_enabled():
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Memory consent endpoint is disabled in this environment.",
+        )
+    service = get_api_service()
+    decision = ConsentDecision(body.decision)
+    summary = service.memory_coordinator.apply_consent_decision(
+        body.user_id,
+        body.proposal_id,
+        decision,
+    )
+    applied = decision == ConsentDecision.ACCEPTED and summary is not None
+    return MemoryConsentResponse(
+        user_id=body.user_id,
+        proposal_id=body.proposal_id,
+        applied=applied or decision == ConsentDecision.DECLINED,
+        summary_updated=summary is not None,
+        memory_summary=summary,
     )
 
 

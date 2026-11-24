@@ -87,9 +87,16 @@ class TestMultilingualBehavioral(unittest.TestCase):
         self.assertIn("User Language: Ambiguous/Uncertain", call_prompt)
         self.assertIn("Kinyarwanda/English/French", call_prompt)
 
+    def _safety_engine(self) -> ConversationEngine:
+        mock_llm = MagicMock(spec=AfriqueQwenLLM)
+        mock_llm.count_tokens.return_value = 128
+        mock_llm.n_ctx = 2048
+        mock_llm.max_tokens = 192
+        return ConversationEngine(manager=ConversationManager(llm=mock_llm))
+
     def test_04_safety_override_in_french_provides_french_resources(self):
         """Gate 1 emergency override for French input provides French crisis support text."""
-        engine = ConversationEngine()
+        engine = self._safety_engine()
         result = engine.process_turn(TurnRequest(
             user_text="Je veux me suicider ce soir avec des médicaments."
         ))
@@ -106,7 +113,7 @@ class TestMultilingualBehavioral(unittest.TestCase):
 
     def test_05_safety_override_in_kinyarwanda_provides_kinyarwanda_resources(self):
         """Gate 1 emergency override for Kinyarwanda input provides Kinyarwanda crisis support text."""
-        engine = ConversationEngine()
+        engine = self._safety_engine()
         result = engine.process_turn(TurnRequest(
             user_text="Ngiye kwiyahura uyu munsi, sinshaka kubaho."
         ))

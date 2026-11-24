@@ -16,6 +16,7 @@ from src.llm.conversation import ConversationManager
 from src.tts.tts_engine import TTSEngine, TTSSynthesisError, UnsupportedTTSLanguageError
 
 from src.api.audio_utils import safe_unlink, temp_output_wav
+from src.memory.coordinator import MemoryCoordinator
 
 logger = logging.getLogger(__name__)
 
@@ -36,6 +37,8 @@ PUBLIC_METADATA_KEYS = frozenset(
         "active_exercise_id",
         "current_step_index",
         "cooldown_turns_remaining",
+        "memory_proposals",
+        "rolling_summary_active",
     }
 )
 
@@ -66,6 +69,11 @@ class MWIZERWAApiService:
         self._inference_lock = threading.RLock()
         self._tts_lock = threading.RLock()
         self._asr_lock = threading.RLock()
+        self._memory = MemoryCoordinator()
+
+    @property
+    def memory_coordinator(self) -> MemoryCoordinator:
+        return self._memory
 
     @property
     def engine_initialized(self) -> bool:
@@ -78,6 +86,7 @@ class MWIZERWAApiService:
             llm = AfriqueQwenLLM()
             llm.load_model()
             self._llm = llm
+            self._memory.set_llm(llm)
             self._initialized = True
             self._init_error = None
             logger.info("MWIZERWA API: shared AfriqueQwen model loaded")
@@ -90,7 +99,7 @@ class MWIZERWAApiService:
         if self._llm is None:
             raise RuntimeError("Engine not initialized")
         manager = ConversationManager(llm=self._llm)
-        return ConversationEngine(manager=manager)
+        return ConversationEngine(manager=manager, memory_coordinator=self._memory)
 
     def _resolve_session(self, session_id: Optional[str]) -> Tuple[str, ConversationEngine]:
         with self._sessions_lock:
@@ -107,6 +116,7 @@ class MWIZERWAApiService:
         session_id: Optional[str] = None,
         mode: Optional[str] = None,
         language: Optional[str] = None,
+        user_id: Optional[str] = None,
     ) -> Tuple[str, TurnResult]:
         if not self.engine_initialized:
             raise RuntimeError("Engine not initialized")
@@ -117,6 +127,7 @@ class MWIZERWAApiService:
             user_text=user_text,
             mode=conv_mode,
             language=language,
+            user_id=user_id,
         )
 
         with self._inference_lock:

@@ -40,6 +40,7 @@ class TurnRequest:
     user_text: str
     mode: Optional[ConversationMode] = None
     language: Optional[str] = None
+    user_id: Optional[str] = None
     metadata: Dict[str, Any] = field(default_factory=dict)
 
 

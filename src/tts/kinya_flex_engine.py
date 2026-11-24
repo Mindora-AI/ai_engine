@@ -2,9 +2,6 @@ import wave
 from pathlib import Path
 from typing import Optional, Union
 
-import numpy as np
-import torch
-
 from src.utils.language_detector import detect_language
 
 from src.runtime.model_paths import resolve_kinya_flex_checkpoint
@@ -19,6 +16,8 @@ class KinyaFlexTTSEngine:
     Loads the checkpoint once and reuses it across synthesize calls.
     """
 
+    _shared_model = None
+
     def __init__(
         self,
         model_path: Path = DEFAULT_MODEL_PATH,
@@ -28,17 +27,26 @@ class KinyaFlexTTSEngine:
         self.model_path = Path(model_path)
         self.sample_rate = sample_rate
         self.default_speaker = default_speaker
-        self._model = None
-        self._device = (
-            torch.device("cuda:0")
-            if torch.cuda.is_available()
-            else torch.device("cpu")
-        )
+        self._model = KinyaFlexTTSEngine._shared_model
+        self._device = None
 
     def load_model(self):
         """Loads FlexKinyaTTS model if not already loaded."""
         if self._model is not None:
             return self._model
+
+        if KinyaFlexTTSEngine._shared_model is not None:
+            self._model = KinyaFlexTTSEngine._shared_model
+            return self._model
+
+        import torch
+
+        if self._device is None:
+            self._device = (
+                torch.device("cuda:0")
+                if torch.cuda.is_available()
+                else torch.device("cpu")
+            )
 
         if not self.model_path.exists():
             raise FileNotFoundError(
@@ -64,6 +72,7 @@ class KinyaFlexTTSEngine:
         )
         model.eval()
         self._model = model
+        KinyaFlexTTSEngine._shared_model = model
         print("KinyaFlex TTS model loaded successfully!")
         return self._model
 
@@ -90,6 +99,9 @@ class KinyaFlexTTSEngine:
 
         if speaker_id is None:
             speaker_id = self.default_speaker
+
+        import numpy as np
+        import torch
 
         model = self.load_model()
 
