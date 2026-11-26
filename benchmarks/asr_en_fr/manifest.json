@@ -1,0 +1,45 @@
+{
+  "description": "English/French ASR benchmark clips. Synthetic samples are TTS-generated for repeatable WER baselines, not conversational ground truth. Natural clips require license and human-verified reference_text (see NATURAL_CORPUS.md).",
+  "clip_schema": {
+    "synthetic_required": ["id", "language", "sample_type", "source", "file", "reference_text"],
+    "natural_required": ["id", "language", "sample_type", "source", "file", "reference_text", "license"]
+  },
+  "clips": [
+    {
+      "id": "en_syn_short_01",
+      "language": "en",
+      "sample_type": "synthetic",
+      "source": "piper-en_US-ljspeech-medium",
+      "file": "clips/en_syn_short_01.wav",
+      "reference_text": "Hello, I am feeling a bit stressed with my work today.",
+      "notes": "TTS read-aloud; not spontaneous speech."
+    },
+    {
+      "id": "en_syn_short_02",
+      "language": "en",
+      "sample_type": "synthetic",
+      "source": "piper-en_US-ljspeech-medium",
+      "file": "clips/en_syn_short_02.wav",
+      "reference_text": "Thank you for listening. I needed to talk about this.",
+      "notes": "TTS read-aloud; not spontaneous speech."
+    },
+    {
+      "id": "fr_syn_short_01",
+      "language": "fr",
+      "sample_type": "synthetic",
+      "source": "piper-fr_FR-siwis-medium",
+      "file": "clips/fr_syn_short_01.wav",
+      "reference_text": "Bonjour, je me sens un peu deborde en ce moment.",
+      "notes": "TTS read-aloud; not spontaneous speech."
+    },
+    {
+      "id": "fr_syn_short_02",
+      "language": "fr",
+      "sample_type": "synthetic",
+      "source": "piper-fr_FR-siwis-medium",
+      "file": "clips/fr_syn_short_02.wav",
+      "reference_text": "Merci de m'ecouter, cela m'aide beaucoup.",
+      "notes": "TTS read-aloud; not spontaneous speech."
+    }
+  ]
+}

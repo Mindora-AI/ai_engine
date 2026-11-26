@@ -1,0 +1,55 @@
+{
+  "python": "D:\\Winner\\DOCUMENTS\\projects\\kinyarwanda-tts-evaluation\\.venv\\Scripts\\python.exe",
+  "gguf": "D:\\Winner\\DOCUMENTS\\projects\\kinyarwanda-tts-evaluation\\models\\afriqueqwen\\AfriqueQwen3.5-4B-Instruct-v1.i1-Q4_K_M.gguf",
+  "phases": {
+    "llm_only": {
+      "rss_baseline_mb": 19.9,
+      "llm_load_s": 6.114,
+      "rss_after_llm_load_mb": 3453.2,
+      "llm_infer_s": 99.267,
+      "rss_after_llm_infer_mb": 4580.5,
+      "cpu_percent_llm_infer": 618.2,
+      "llm_config": {
+        "model_path": "D:\\Winner\\DOCUMENTS\\projects\\kinyarwanda-tts-evaluation\\models\\afriqueqwen\\AfriqueQwen3.5-4B-Instruct-v1.i1-Q4_K_M.gguf",
+        "n_ctx": 4096,
+        "n_threads": 4,
+        "n_gpu_layers": 0,
+        "max_tokens": 768
+      }
+    },
+    "whisper_only": {
+      "rss_baseline_mb": 18.9,
+      "whisper_config": {
+        "model": "small",
+        "device": "cpu",
+        "compute_type": "int8",
+        "default_model": "small"
+      },
+      "whisper_load_s": 13.373,
+      "rss_after_whisper_load_mb": 381.4,
+      "whisper_infer_s": 6.488,
+      "rss_after_whisper_infer_mb": 441.0,
+      "cpu_percent_whisper_infer": 382.4
+    },
+    "both_sequential": {
+      "rss_baseline_mb": 19.7,
+      "whisper_load_s": 9.193,
+      "rss_after_whisper_only_mb": 381.3,
+      "llm_load_s": 10.181,
+      "rss_both_loaded_mb": 3798.4,
+      "whisper_infer_s": 6.051,
+      "rss_after_whisper_infer_mb": 3864.1,
+      "cpu_percent_whisper_infer": 428.6,
+      "llm_infer_s": 100.084,
+      "rss_after_llm_infer_mb": 4522.1,
+      "cpu_percent_llm_infer": 650.1,
+      "peak_rss_mb": 4522.1,
+      "llm_config": {
+        "n_ctx": 4096,
+        "n_threads": 4,
+        "n_gpu_layers": 0
+      },
+      "inference_mode": "sequential"
+    }
+  }
+}

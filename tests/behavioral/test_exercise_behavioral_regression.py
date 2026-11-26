@@ -36,6 +36,12 @@ class TestExerciseBehavioralRegression(unittest.TestCase):
             "interaction_intent": "REFLECTION",
             "requires_clarification": False,
         })
+        mock_llm.n_ctx = 4096
+        mock_llm.max_tokens = 512
+        mock_llm.count_tokens.return_value = 50
+        mock_llm.generate_auxiliary_json.return_value = {
+            "recommended_exercise_id": "breathing_gentle_rhythm",
+        }
         manager = ConversationManager(llm=mock_llm)
         engine = ConversationEngine(manager=manager)
 
@@ -85,6 +91,12 @@ class TestExerciseBehavioralRegression(unittest.TestCase):
             "interaction_intent": "REFLECTION",
             "requires_clarification": False,
         })
+        mock_llm.n_ctx = 4096
+        mock_llm.max_tokens = 512
+        mock_llm.count_tokens.return_value = 50
+        mock_llm.generate_auxiliary_json.return_value = {
+            "recommended_exercise_id": "breathing_gentle_rhythm",
+        }
         manager = ConversationManager(llm=mock_llm)
         engine = ConversationEngine(manager=manager)
 

@@ -1,5 +1,7 @@
 # MWIZERWA Inference HTTP API
 
+**Backend handoff:** end-to-end integration (auth, context, memory, exercises, voice partial success, limitations) is in [INTEGRATION_GUIDE.md](../INTEGRATION_GUIDE.md) **§8**. This file is the endpoint reference; canonical schemas: `src/api/schemas.py`.
+
 Serve with:
 
 ```bash
@@ -34,11 +36,55 @@ Environment: `MWIZERWA_API_HOST`, `MWIZERWA_API_PORT`, `MWIZERWA_MODELS_DIR`, `M
 
 ## `GET /health`
 
+Cheap readiness check. Does **not** load models or hit the network.
+
 **Response**
 
 ```json
-{"status": "ready", "engine_initialized": true}
+{
+  "status": "ready",
+  "engine_initialized": true,
+  "backends": {
+    "llm": {
+      "dependency_available": true,
+      "artifact_present": true,
+      "loaded": true
+    },
+    "asr_kinyarwanda": {
+      "dependency_available": true,
+      "artifact_present": null,
+      "loaded": false,
+      "model_id": "ElvisTata2024/Kinyarwanda-Health-ASR"
+    },
+    "asr_whisper": {
+      "dependency_available": true,
+      "artifact_present": true,
+      "loaded": false,
+      "configured_model": "small"
+    },
+    "tts": {
+      "dependency_available": true,
+      "artifact_present": true,
+      "loaded": false,
+      "languages": {
+        "rw": {"artifact_present": true},
+        "en": {"artifact_present": true},
+        "fr": {"artifact_present": true}
+      }
+    }
+  }
+}
 ```
+
+| Field | Meaning |
+|--------|---------|
+| `status` | `ready` when AfriqueQwen finished API startup load |
+| `engine_initialized` | Same gate as before (LLM) |
+| `backends.*.dependency_available` | Python package importable (not proof of quality) |
+| `backends.*.artifact_present` | Local GGUF / HF cache / Piper files where cheap to check |
+| `backends.*.loaded` | Singleton already resident in this process |
+
+`artifact_present: null` means not checked without expensive initialization (e.g. HF Kinyarwanda weights until first `/transcribe`).
 
 ---
 
@@ -143,19 +189,32 @@ curl -X POST http://127.0.0.1:8000/tts \
 
 ---
 
-## `POST /transcribe`
+## `POST /transcribe` (ASR)
 
 **multipart/form-data**
 
 | Field | Type | Required |
 |-------|------|----------|
 | `audio` | file | yes |
+| `language` | `rw` \| `en` \| `fr` | no (default **`rw`**) |
+
+| `language` | Backend |
+|------------|---------|
+| omitted / `rw` | Kinyarwanda Health ASR (Hugging Face transformers) |
+| `en` / `fr` | Whisper **Small** (`faster-whisper`, CPU `int8`) |
+
+Install optional EN/FR stack: `pip install -r requirements-asr-whisper.txt` (includes `requests`, PyAV `>=12,<14`).
 
 **Response**
 
 ```json
-{"transcription": "..."}
+{
+  "transcription": "...",
+  "language": "rw"
+}
 ```
+
+**Errors:** `400` unsupported language; `503` if EN/FR requested but `faster-whisper` is missing.
 
 ---
 
@@ -168,7 +227,9 @@ curl -X POST http://127.0.0.1:8000/tts \
 | `audio` | file | yes |
 | `session_id` | string | no (reuse `/chat` session) |
 | `mode` | `gentle` \| `normal` \| `motivational` | no |
+| `language` | `rw` \| `en` \| `fr` | no (ASR default **`rw`**; same hint passed to chat) |
 | `speaker_id` | int | no |
+| `context_json` | string (JSON) | no (`TurnContextRequest`) |
 
 **Response (JSON)**
 
@@ -179,13 +240,26 @@ curl -X POST http://127.0.0.1:8000/tts \
   "response_text": "assistant reply",
   "mode": "normal",
   "language": "rw",
+  "asr_language": "rw",
   "metadata": {},
   "audio_base64": "<base64 WAV>",
+  "audio_status": "success",
+  "audio_error": null,
   "audio_media_type": "audio/wav"
 }
 ```
 
-Decode `audio_base64` to play the assistant voice.
+| Field | Notes |
+|--------|--------|
+| `language` | Assistant reply language from conversation engine |
+| `asr_language` | Language used for speech recognition (`rw` / `en` / `fr`) |
+| `audio_status` | `success` or `failed` |
+| `audio_base64` | `null` when TTS fails **after** ASR + chat succeeded |
+| `audio_error` | Safe client message when `audio_status` is `failed` |
+
+Partial success returns **HTTP 200** with transcript and text so clients do not retry a turn that already advanced the session.
+
+Decode `audio_base64` to play the assistant voice when present.
 
 **Example (curl)**
 

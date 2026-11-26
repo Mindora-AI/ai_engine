@@ -8,6 +8,14 @@ from typing import TYPE_CHECKING, Optional, List, Dict, Any
 if TYPE_CHECKING:
     from src.memory.coordinator import MemoryCoordinator
 from src.llm.conversation import ConversationManager
+from src.conversation.context_integration import (
+    backend_controls_exercise_candidates,
+    exercise_id_for_category,
+    recent_turns_fingerprint,
+    resolve_approved_memory_summary,
+    validate_recent_turns,
+)
+from src.conversation.safety_signal import build_safety_signal
 from src.conversation.session import SessionState, TurnRequest, TurnResult, ConversationMode
 from src.utils.language_detector import LanguageDetector, LanguageDetectionResult
 from src.safety import SafetyEvaluator, SafetyGuardrail, ApplicationAction, SafetyAssessment
@@ -24,6 +32,11 @@ from src.exercises import (
     CATEGORY_DEFAULT_EXERCISE,
     SUPPORTED_EXERCISE_LANGUAGES,
     UNRELATED_CHECKINS,
+)
+from src.exercises.registry import is_registered_exercise_id
+from src.exercises.recommendation_policy import (
+    recent_conversation_excerpt,
+    unsolicited_offer_allowed,
 )
 
 
@@ -69,6 +82,31 @@ class ConversationEngine:
         self._recommender = recommender if recommender is not None else ExerciseRecommender()
         self._lifecycle = lifecycle if lifecycle is not None else ExerciseLifecycle()
         self._memory = memory_coordinator
+        self._recent_turns_fingerprint: Optional[str] = None
+
+    def _apply_backend_recent_turns(self, request: TurnRequest) -> None:
+        ctx = request.context
+        if ctx is None or ctx.recent_turns is None:
+            return
+        validated = validate_recent_turns(ctx.recent_turns)
+        fp = recent_turns_fingerprint(validated)
+        if fp == self._recent_turns_fingerprint:
+            return
+        system_msg = self._manager.messages[0] if self._manager.messages else {
+            "role": "system",
+            "content": self._manager.system_prompt,
+        }
+        self._manager.messages = [system_msg] + validated
+        self._recent_turns_fingerprint = fp
+        # Rolling summary compresses prior verbatim turns; backend resync makes it unsafe to keep.
+        self._manager.rolling_summary = ""
+        self._manager._pending_context_fold = None
+        self._manager.last_summarization_failed = False
+
+    def _eligible_exercises(self, request: TurnRequest) -> Optional[List]:
+        if request.context is None or request.context.eligible_exercises is None:
+            return None
+        return request.context.eligible_exercises
 
     @property
     def memory_coordinator(self) -> Optional["MemoryCoordinator"]:
@@ -159,6 +197,9 @@ class ConversationEngine:
         if request.mode is not None:
             self._state.mode = request.mode
 
+        self._apply_backend_recent_turns(request)
+        eligible_exercises = self._eligible_exercises(request)
+
         # Per-turn language detection (independent for each turn, never blindly inherited)
         if request.language is not None:
             lang_result = LanguageDetectionResult(
@@ -233,12 +274,21 @@ class ConversationEngine:
                 "gate2_triggered": False,
                 "exercise_status": self._state.exercise_state.status.value,
             }
+            safety_signal = build_safety_signal(
+                safety_assessment=safety_assessment,
+                safety_action=safety_action,
+                gate2_triggered=False,
+                gate2_violation=None,
+            )
+            if safety_signal is not None:
+                metadata["safety_signal"] = safety_signal
 
             return TurnResult(
                 response_text=deterministic_response,
                 mode=self._state.mode,
                 language=safe_lang,
                 language_result=lang_result,
+                recommended_exercise_id=None,
                 metadata=metadata,
             )
 
@@ -346,7 +396,27 @@ class ConversationEngine:
                 return self._build_turn_result(clarif, None, lang_result, safety_assessment, safety_action, request.user_text)
 
             target_cat = explicit_check.category or ExerciseCategory.BREATHING
-            ex_id = CATEGORY_DEFAULT_EXERCISE[target_cat]
+            ex_id = exercise_id_for_category(
+                target_cat,
+                eligible_exercises,
+                registry_default=CATEGORY_DEFAULT_EXERCISE,
+            )
+            if ex_id is None or not is_registered_exercise_id(ex_id):
+                unavailable = (
+                    "No eligible exercise is available for that request right now. "
+                    "We can keep talking if you would like."
+                )
+                self._manager.record_deterministic_turn(
+                    cleaned_text, unavailable, detected_language=lang_result
+                )
+                return self._build_turn_result(
+                    unavailable,
+                    target_lang,
+                    lang_result,
+                    safety_assessment,
+                    safety_action,
+                    request.user_text,
+                )
 
             life_res = self._lifecycle.start_exercise(
                 ex_state, ex_id, ExerciseTriggerType.EXPLICIT_USER_REQUEST, target_lang
@@ -371,9 +441,12 @@ class ConversationEngine:
             last_parsed_prev.requires_clarification if last_parsed_prev else False
         )
 
-        persistent_memory = ""
-        if self._memory and request.user_id:
-            persistent_memory = self._memory.get_approved_summary_text(request.user_id)
+        def _internal_memory() -> str:
+            if self._memory and request.user_id:
+                return self._memory.get_approved_summary_text(request.user_id)
+            return ""
+
+        persistent_memory = resolve_approved_memory_summary(request, _internal_memory)
 
         response_text = self._manager.generate_response(
             cleaned_text,
@@ -393,17 +466,48 @@ class ConversationEngine:
             last_parsed.requires_clarification if last_parsed else False
         )
         life_res = None
-        if target_lang is not None and not current_requires_clarification:
-            rec_decision = self._recommender.evaluate_recommendation(
-                cleaned_text, intent, ex_state, target_lang
-            )
-            if rec_decision.action == RecommendationAction.OFFER_EXERCISE:
-                life_res = self._lifecycle.offer_exercise(ex_state, rec_decision.exercise_id, target_lang)
-                # Append deterministic pre-authored offer to Gate 2-approved LLM response
-                combined_text = f"{response_text}\n\n{life_res.response_text}"
-                if self._manager.messages and self._manager.messages[-1]["role"] == "assistant":
-                    self._manager.messages[-1]["content"] = combined_text
-                response_text = combined_text
+        recommended_exercise_id: Optional[str] = None
+        gate2_triggered = bool(getattr(self._manager, "last_gate2_triggered", False))
+        if (
+            not gate2_triggered
+            and target_lang is not None
+            and not current_requires_clarification
+            and unsolicited_offer_allowed(safety_action, safety_assessment.category)
+        ):
+            if not (
+                backend_controls_exercise_candidates(request.context)
+                and not eligible_exercises
+            ):
+                conversation_context = recent_conversation_excerpt(
+                    self._manager.messages,
+                    getattr(self._manager, "rolling_summary", "") or "",
+                )
+                rec_decision = self._recommender.evaluate_recommendation(
+                    cleaned_text,
+                    intent,
+                    ex_state,
+                    target_lang,
+                    eligible_exercises=eligible_exercises,
+                    llm=getattr(self._manager, "llm", None),
+                    conversation_context=conversation_context,
+                    safety_action=safety_action,
+                    safety_category=safety_assessment.category,
+                )
+                if (
+                    rec_decision.action == RecommendationAction.OFFER_EXERCISE
+                    and is_registered_exercise_id(rec_decision.exercise_id or "")
+                ):
+                    recommended_exercise_id = rec_decision.exercise_id
+                    life_res = self._lifecycle.offer_exercise(
+                        ex_state, rec_decision.exercise_id, target_lang
+                    )
+                    combined_text = f"{response_text}\n\n{life_res.response_text}"
+                    if (
+                        self._manager.messages
+                        and self._manager.messages[-1]["role"] == "assistant"
+                    ):
+                        self._manager.messages[-1]["content"] = combined_text
+                    response_text = combined_text
 
         result = self._build_turn_result(
             response_text,
@@ -413,6 +517,7 @@ class ConversationEngine:
             safety_action,
             request.user_text,
             life_res,
+            recommended_exercise_id=recommended_exercise_id,
         )
 
         if self._memory and request.user_id and response_text.strip():
@@ -442,6 +547,7 @@ class ConversationEngine:
         safety_action: Any,
         raw_user_input: str,
         lifecycle_result: Optional[LifecycleResult] = None,
+        recommended_exercise_id: Optional[str] = None,
     ) -> TurnResult:
         """Helper to construct typed TurnResult with consolidated metadata."""
         metadata: Dict[str, Any] = {
@@ -472,11 +578,29 @@ class ConversationEngine:
             metadata["requires_clarification"] = last_parsed.requires_clarification
             metadata["parsed_response"] = last_parsed
 
+        gate2_triggered = bool(metadata.get("gate2_triggered", False))
+        gate2_violation = (
+            getattr(self._manager, "last_gate2_violation", None)
+            if gate2_triggered
+            else None
+        )
+        if not gate2_triggered:
+            metadata["gate2_violation"] = None
+        safety_signal = build_safety_signal(
+            safety_assessment=safety_assessment if isinstance(safety_assessment, SafetyAssessment) else None,
+            safety_action=safety_action if isinstance(safety_action, ApplicationAction) else ApplicationAction.NORMAL_CONVERSATION,
+            gate2_triggered=gate2_triggered,
+            gate2_violation=gate2_violation,
+        )
+        if safety_signal is not None:
+            metadata["safety_signal"] = safety_signal
+
         return TurnResult(
             response_text=response_text,
             mode=self._state.mode,
             language=lang_result.language if lang_result else None,
             language_result=lang_result,
+            recommended_exercise_id=recommended_exercise_id,
             metadata=metadata,
         )
 
@@ -484,3 +608,4 @@ class ConversationEngine:
         """Resets the conversation history and clears active exercise state."""
         self._manager.reset_conversation()
         self._state.exercise_state.reset_to_idle()
+        self._recent_turns_fingerprint = None

@@ -423,6 +423,12 @@ def _register_initial_exercises() -> Dict[str, Exercise]:
 _EXERCISES: Mapping[str, Exercise] = MappingProxyType(_register_initial_exercises())
 
 
+def is_registered_exercise_id(exercise_id: str) -> bool:
+    """Return True when exercise_id exists in the local dev registry."""
+    clean_id = (exercise_id or "").strip()
+    return clean_id in _EXERCISES
+
+
 def get_exercise(exercise_id: str) -> Exercise:
     """
     Retrieves an immutable Exercise from the static catalogue by its unique identifier.

@@ -5,6 +5,7 @@ contextual recommendations, cooldown semantics, negation handling, and false-pos
 """
 
 import unittest
+from unittest.mock import MagicMock
 
 from src.exercises.categories import ExerciseCategory
 from src.exercises.models import ExerciseSessionState
@@ -21,6 +22,17 @@ class TestExerciseRecommender(unittest.TestCase):
     def setUp(self):
         self.recommender = ExerciseRecommender()
         self.session = ExerciseSessionState()
+        self.mock_llm = MagicMock()
+        self.mock_llm.generate_auxiliary_json.return_value = {
+            "recommended_exercise_id": None,
+        }
+
+    def _llm_returning(self, exercise_id: str):
+        llm = MagicMock()
+        llm.generate_auxiliary_json.return_value = {
+            "recommended_exercise_id": exercise_id,
+        }
+        return llm
 
     # -----------------------------------------------------------------------
     # 1. Explicit Request Detection (RW / EN / FR)
@@ -207,6 +219,7 @@ class TestExerciseRecommender(unittest.TestCase):
             interaction_intent=InteractionIntent.REFLECTION,
             session_state=self.session,
             language="en",
+            llm=self._llm_returning("breathing_gentle_rhythm"),
         )
         self.assertEqual(decision.action, RecommendationAction.OFFER_EXERCISE)
         self.assertEqual(decision.category, ExerciseCategory.BREATHING)
@@ -218,6 +231,7 @@ class TestExerciseRecommender(unittest.TestCase):
             interaction_intent=InteractionIntent.REFLECTION,
             session_state=self.session,
             language="en",
+            llm=self._llm_returning("grounding_54321"),
         )
         self.assertEqual(decision.action, RecommendationAction.OFFER_EXERCISE)
         self.assertEqual(decision.category, ExerciseCategory.GROUNDING)
@@ -229,6 +243,7 @@ class TestExerciseRecommender(unittest.TestCase):
             interaction_intent=InteractionIntent.REFLECTION,
             session_state=self.session,
             language="en",
+            llm=self._llm_returning("compassion_pause"),
         )
         self.assertEqual(decision.action, RecommendationAction.OFFER_EXERCISE)
         self.assertEqual(decision.category, ExerciseCategory.SELF_COMPASSION)
@@ -240,6 +255,30 @@ class TestExerciseRecommender(unittest.TestCase):
             interaction_intent=InteractionIntent.REFLECTION,
             session_state=self.session,
             language="en",
+            llm=self.mock_llm,
+        )
+        self.assertEqual(decision.action, RecommendationAction.NO_ACTION)
+
+    def test_missing_llm_produces_no_unsolicited_offer(self):
+        decision = self.recommender.evaluate_recommendation(
+            user_text="I feel so tense and physically stressed.",
+            interaction_intent=InteractionIntent.REFLECTION,
+            session_state=self.session,
+            language="en",
+            llm=None,
+        )
+        self.assertEqual(decision.action, RecommendationAction.NO_ACTION)
+        self.assertIn("unavailable", decision.reason.lower())
+
+    def test_auxiliary_failure_does_not_imply_offer(self):
+        llm = MagicMock()
+        llm.generate_auxiliary_json.side_effect = RuntimeError("boom")
+        decision = self.recommender.evaluate_recommendation(
+            user_text="I feel so tense and physically stressed.",
+            interaction_intent=InteractionIntent.REFLECTION,
+            session_state=self.session,
+            language="en",
+            llm=llm,
         )
         self.assertEqual(decision.action, RecommendationAction.NO_ACTION)
 
@@ -247,31 +286,13 @@ class TestExerciseRecommender(unittest.TestCase):
     # 4. Explicit Request Override & Language Uncertainty
     # -----------------------------------------------------------------------
 
-    def test_explicit_request_overrides_cooldown(self):
-        # Put session into 5-turn cooldown
-        self.session.apply_cooldown(5)
-        self.assertEqual(self.session.cooldown_turns_remaining, 5)
-
-        # Explicit request must STILL trigger INITIATE_EXPLICIT_REQUEST
-        decision = self.recommender.evaluate_recommendation(
-            user_text="Can we do a breathing exercise now please?",
-            interaction_intent=InteractionIntent.PRACTICAL_ADVICE,
-            session_state=self.session,
-            language="en",
+    def test_explicit_request_detected_for_engine_explicit_path(self):
+        """Explicit starts are handled in ConversationEngine, not evaluate_recommendation."""
+        res = self.recommender.detect_explicit_request(
+            "Can we do a breathing exercise now please?"
         )
-        self.assertEqual(decision.action, RecommendationAction.INITIATE_EXPLICIT_REQUEST)
-        self.assertEqual(decision.exercise_id, "breathing_gentle_rhythm")
-        self.assertEqual(decision.category, ExerciseCategory.BREATHING)
-
-    def test_explicit_request_language_uncertainty(self):
-        # User makes explicit request but language is unsupported/undetermined and no established session language
-        decision = self.recommender.evaluate_recommendation(
-            user_text="Help me breathe please.",
-            interaction_intent=InteractionIntent.PRACTICAL_ADVICE,
-            session_state=self.session,
-            language="es",  # Unsupported
-        )
-        self.assertEqual(decision.action, RecommendationAction.CLARIFY_LANGUAGE)
+        self.assertTrue(res.is_explicit_request)
+        self.assertEqual(res.category, ExerciseCategory.BREATHING)
 
     # -----------------------------------------------------------------------
     # 5. Cooldown Semantics (Exact Sequence: T -> T+1..T+5 -> T+6)
@@ -329,7 +350,11 @@ class TestExerciseRecommender(unittest.TestCase):
 
         # Turn T+6: Unsolicited recommendations are eligible again!
         dec_t6 = self.recommender.evaluate_recommendation(
-            tense_input, InteractionIntent.REFLECTION, self.session, language="en"
+            tense_input,
+            InteractionIntent.REFLECTION,
+            self.session,
+            language="en",
+            llm=self._llm_returning("grounding_54321"),
         )
         self.assertEqual(dec_t6.action, RecommendationAction.OFFER_EXERCISE)
         self.assertEqual(dec_t6.exercise_id, "grounding_54321")

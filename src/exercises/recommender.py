@@ -8,11 +8,16 @@ English, and French.
 import re
 from dataclasses import dataclass
 from enum import Enum
-from typing import Dict, Optional, Tuple
+from typing import TYPE_CHECKING, Any, Dict, List, Optional, Tuple
 
+if TYPE_CHECKING:
+    from src.conversation.session import EligibleExerciseCandidate
 from src.exercises.categories import ExerciseCategory
+from src.exercises.recommendation_policy import unsolicited_offer_allowed
+from src.exercises.suitability_selection import select_exercise_candidate
 from src.exercises.models import ExerciseSessionState, SUPPORTED_EXERCISE_LANGUAGES
 from src.llm.response_parser import InteractionIntent
+from src.safety.categories import ApplicationAction, SafetyCategory
 
 
 class RecommendationAction(str, Enum):
@@ -260,25 +265,56 @@ class ExerciseRecommender:
 
         return ExplicitRequestResult(is_explicit_request=False)
 
+    def default_standalone_candidates(self) -> List["EligibleExerciseCandidate"]:
+        from src.conversation.session import EligibleExerciseCandidate
+
+        return [
+            EligibleExerciseCandidate(id=ex_id, category=category)
+            for category, ex_id in CATEGORY_DEFAULT_EXERCISE.items()
+        ]
+
+    def exercise_reluctance_detected(
+        self,
+        user_text: str,
+        conversation_context: Optional[Dict[str, Any]] = None,
+    ) -> bool:
+        texts = [user_text]
+        for turn in (conversation_context or {}).get("recent_turns") or []:
+            if turn.get("role") == "user":
+                content = (turn.get("content") or "").strip()
+                if content:
+                    texts.append(content)
+        for text in texts:
+            if self._negation_pattern.search(text):
+                return True
+        return False
+
+    def _pick_exercise_id(
+        self,
+        category: ExerciseCategory,
+        eligible_exercises: Optional[List["EligibleExerciseCandidate"]],
+    ) -> Optional[str]:
+        if eligible_exercises is not None:
+            for candidate in eligible_exercises:
+                if candidate.category == category:
+                    return candidate.id
+            return None
+        return CATEGORY_DEFAULT_EXERCISE.get(category)
+
     def evaluate_recommendation(
         self,
         user_text: str,
         interaction_intent: Optional[InteractionIntent],
         session_state: ExerciseSessionState,
         language: Optional[str] = None,
+        eligible_exercises: Optional[List["EligibleExerciseCandidate"]] = None,
+        *,
+        llm=None,
+        conversation_context: Optional[Dict[str, Any]] = None,
+        safety_action: ApplicationAction = ApplicationAction.NORMAL_CONVERSATION,
+        safety_category: SafetyCategory = SafetyCategory.SAFE_CONVERSATIONAL,
     ) -> RecommendationDecision:
-        """
-        Evaluates whether an exercise should be initiated or offered in the current turn.
-
-        Args:
-            user_text: Normalized user message.
-            interaction_intent: Classified conversational intention from response contract.
-            session_state: Current exercise session state (cooldown, history, active state).
-            language: Resolved or requested language code.
-
-        Returns:
-            RecommendationDecision indicating recommended action and exercise metadata.
-        """
+        """Unsolicited exercise offer evaluation (explicit requests handled in ConversationEngine)."""
         cleaned = (user_text or "").strip()
         if not cleaned:
             return RecommendationDecision(
@@ -286,38 +322,18 @@ class ExerciseRecommender:
                 reason="Empty user input.",
             )
 
-        # 1. Evaluate Explicit Exercise Request
-        explicit_result = self.detect_explicit_request(cleaned)
-        if explicit_result.is_explicit_request:
-            # Language uncertainty check: if language is not supported or not determined
-            norm_lang = (language or "").strip().lower()
-            if norm_lang not in SUPPORTED_EXERCISE_LANGUAGES and not session_state.established_language:
-                return RecommendationDecision(
-                    action=RecommendationAction.CLARIFY_LANGUAGE,
-                    category=explicit_result.category,
-                    reason="Explicit request detected but language is undetermined.",
-                )
-
-            # If user explicitly requested an exercise without specifying category
-            if explicit_result.is_general_exercise_request and explicit_result.category is None:
-                # Default to breathing as safe foundational entry point
-                selected_cat = ExerciseCategory.BREATHING
-                return RecommendationDecision(
-                    action=RecommendationAction.INITIATE_EXPLICIT_REQUEST,
-                    exercise_id=CATEGORY_DEFAULT_EXERCISE[selected_cat],
-                    category=selected_cat,
-                    reason="General explicit exercise request initiated with default breathing exercise.",
-                )
-
-            target_cat = explicit_result.category or ExerciseCategory.BREATHING
+        if not unsolicited_offer_allowed(safety_action, safety_category):
             return RecommendationDecision(
-                action=RecommendationAction.INITIATE_EXPLICIT_REQUEST,
-                exercise_id=CATEGORY_DEFAULT_EXERCISE[target_cat],
-                category=target_cat,
-                reason=f"Explicit request for {target_cat.value} exercise initiated (cooldown overridden).",
+                action=RecommendationAction.NO_ACTION,
+                reason="Gate 1 policy suppresses unsolicited exercise offers.",
             )
 
-        # 2. Strict Intent Rules for Unsolicited Recommendations
+        backend_candidates = eligible_exercises is not None
+        if backend_candidates and not eligible_exercises:
+            return RecommendationDecision(
+                action=RecommendationAction.NO_ACTION,
+                reason="No backend-supplied eligible exercises.",
+            )
 
         # LISTENING: Never make unsolicited exercise offers
         if interaction_intent == InteractionIntent.LISTENING:
@@ -339,53 +355,51 @@ class ExerciseRecommender:
                 action=RecommendationAction.NO_ACTION,
                 reason="Conversational intent is UNCLEAR; unsolicited offers suppressed.",
             )
+        if interaction_intent != InteractionIntent.REFLECTION:
+            return RecommendationDecision(
+                action=RecommendationAction.NO_ACTION,
+                reason="Unsolicited offers require REFLECTION interaction intent.",
+            )
 
-        # 3. Cooldown Verification for Unsolicited Offers
-        if session_state.cooldown_turns_remaining > 0:
+        if self.exercise_reluctance_detected(cleaned, conversation_context):
+            return RecommendationDecision(
+                action=RecommendationAction.NO_ACTION,
+                reason="User reluctance toward exercises detected in recent context.",
+            )
+
+        if not backend_candidates and session_state.cooldown_turns_remaining > 0:
             return RecommendationDecision(
                 action=RecommendationAction.NO_ACTION,
                 reason=f"Unsolicited offer suppressed: cooldown active ({session_state.cooldown_turns_remaining} turns remaining).",
             )
 
-        # 4. Contextual Cues Check (Permitted strictly when intent is REFLECTION and cooldown == 0)
-        if interaction_intent == InteractionIntent.REFLECTION:
-            # Check for physical tension -> Gentle Rhythmic Breathing
-            if self._cue_somatic_tension.search(cleaned):
-                cat = ExerciseCategory.BREATHING
-                return RecommendationDecision(
-                    action=RecommendationAction.OFFER_EXERCISE,
-                    exercise_id=CATEGORY_DEFAULT_EXERCISE[cat],
-                    category=cat,
-                    reason="Contextual somatic tension detected during reflection; offering breathing exercise.",
-                )
+        candidates = (
+            list(eligible_exercises)
+            if eligible_exercises is not None
+            else self.default_standalone_candidates()
+        )
 
-            # Check for racing thoughts / mental flooding -> 5-4-3-2-1 Sensory Grounding
-            if self._cue_overwhelmed.search(cleaned):
-                cat = ExerciseCategory.GROUNDING
-                return RecommendationDecision(
-                    action=RecommendationAction.OFFER_EXERCISE,
-                    exercise_id=CATEGORY_DEFAULT_EXERCISE[cat],
-                    category=cat,
-                    reason="Contextual cognitive flooding detected during reflection; offering grounding exercise.",
-                )
-
-            # Check for harsh self-blame -> Self-Compassion Pause
-            if self._cue_self_blame.search(cleaned):
-                cat = ExerciseCategory.SELF_COMPASSION
-                return RecommendationDecision(
-                    action=RecommendationAction.OFFER_EXERCISE,
-                    exercise_id=CATEGORY_DEFAULT_EXERCISE[cat],
-                    category=cat,
-                    reason="Contextual self-blame detected during reflection; offering self-compassion exercise.",
-                )
-
-            # Standard reflection without somatic/cognitive distress cues
+        selected_id = select_exercise_candidate(
+            llm,
+            user_text=cleaned,
+            interaction_intent=interaction_intent,
+            language=language,
+            candidates=candidates,
+            conversation_context=conversation_context or {},
+        )
+        if not selected_id:
+            if llm is None or not hasattr(llm, "generate_auxiliary_json"):
+                reason = "Suitability inference unavailable for unsolicited offers."
+            else:
+                reason = "Suitability model selected no appropriate exercise."
             return RecommendationDecision(
                 action=RecommendationAction.NO_ACTION,
-                reason="Reflection intent without specific exercise eligibility cues.",
+                reason=reason,
             )
-
+        category = next((c.category for c in candidates if c.id == selected_id), None)
         return RecommendationDecision(
-            action=RecommendationAction.NO_ACTION,
-            reason="No exercise recommendation criteria met.",
+            action=RecommendationAction.OFFER_EXERCISE,
+            exercise_id=selected_id,
+            category=category,
+            reason="Structured suitability selection chose an eligible exercise.",
         )

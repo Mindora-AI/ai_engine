@@ -1,0 +1,142 @@
+{
+  "manifest": "D:\\Winner\\DOCUMENTS\\projects\\kinyarwanda-tts-evaluation\\benchmarks\\asr_en_fr\\manifest.json",
+  "model": "small",
+  "device": "cpu",
+  "compute_type": "int8",
+  "beam_size": 1,
+  "vad_filter": true,
+  "condition_on_previous_text": false,
+  "whisper_load_cold_s": 10.234,
+  "whisper_load_warm_s": 0.0,
+  "rss_after_load_mb": 442.8,
+  "clips": [
+    {
+      "id": "en_syn_short_01",
+      "language": "en",
+      "sample_type": "synthetic",
+      "reference_text": "Hello, I am feeling a bit stressed with my work today.",
+      "audio_path": "D:\\Winner\\DOCUMENTS\\projects\\kinyarwanda-tts-evaluation\\benchmarks\\asr_en_fr\\clips\\en_syn_short_01.wav",
+      "forced": {
+        "latency_s": 4.305,
+        "rtf": 1.315,
+        "rss_mb_before": 383.7,
+        "rss_mb_after": 443.7,
+        "cpu_percent": 449.6,
+        "transcription": "Hello, I am feeling a bit stressed with my work today.",
+        "detected_language": "en",
+        "language_probability": 1,
+        "mode": "forced_language",
+        "requested_language": "en"
+      },
+      "wer_forced": 0.0,
+      "auto_detect": {
+        "latency_s": 8.363,
+        "rtf": 2.554,
+        "rss_mb_before": 445.1,
+        "rss_mb_after": 445.7,
+        "cpu_percent": 421.7,
+        "transcription": "Hello, I am feeling a bit stressed with my work today.",
+        "detected_language": "en",
+        "language_probability": 0.9961,
+        "mode": "auto_detect"
+      },
+      "wer_auto": 0.0
+    },
+    {
+      "id": "en_syn_short_02",
+      "language": "en",
+      "sample_type": "synthetic",
+      "reference_text": "Thank you for listening. I needed to talk about this.",
+      "audio_path": "D:\\Winner\\DOCUMENTS\\projects\\kinyarwanda-tts-evaluation\\benchmarks\\asr_en_fr\\clips\\en_syn_short_02.wav",
+      "forced": {
+        "latency_s": 4.253,
+        "rtf": 1.382,
+        "rss_mb_before": 445.7,
+        "rss_mb_after": 445.7,
+        "cpu_percent": 436.0,
+        "transcription": "Thank you for listening. I needed to talk about this.",
+        "detected_language": "en",
+        "language_probability": 1,
+        "mode": "forced_language",
+        "requested_language": "en"
+      },
+      "wer_forced": 0.0,
+      "auto_detect": {
+        "latency_s": 7.897,
+        "rtf": 2.567,
+        "rss_mb_before": 445.7,
+        "rss_mb_after": 442.8,
+        "cpu_percent": 459.8,
+        "transcription": "Thank you for listening. I needed to talk about this.",
+        "detected_language": "en",
+        "language_probability": 0.9957,
+        "mode": "auto_detect"
+      },
+      "wer_auto": 0.0
+    },
+    {
+      "id": "fr_syn_short_01",
+      "language": "fr",
+      "sample_type": "synthetic",
+      "reference_text": "Bonjour, je me sens un peu deborde en ce moment.",
+      "audio_path": "D:\\Winner\\DOCUMENTS\\projects\\kinyarwanda-tts-evaluation\\benchmarks\\asr_en_fr\\clips\\fr_syn_short_01.wav",
+      "forced": {
+        "latency_s": 3.927,
+        "rtf": 1.415,
+        "rss_mb_before": 442.8,
+        "rss_mb_after": 442.8,
+        "cpu_percent": 476.6,
+        "transcription": "Bonjour, je me sens un peu de bord dans ce moment.",
+        "detected_language": "fr",
+        "language_probability": 1,
+        "mode": "forced_language",
+        "requested_language": "fr"
+      },
+      "wer_forced": 0.3,
+      "auto_detect": {
+        "latency_s": 8.033,
+        "rtf": 2.895,
+        "rss_mb_before": 442.9,
+        "rss_mb_after": 442.9,
+        "cpu_percent": 454.8,
+        "transcription": "Bonjour, je me sens un peu de bord dans ce moment.",
+        "detected_language": "fr",
+        "language_probability": 0.9953,
+        "mode": "auto_detect"
+      },
+      "wer_auto": 0.3
+    },
+    {
+      "id": "fr_syn_short_02",
+      "language": "fr",
+      "sample_type": "synthetic",
+      "reference_text": "Merci de m'ecouter, cela m'aide beaucoup.",
+      "audio_path": "D:\\Winner\\DOCUMENTS\\projects\\kinyarwanda-tts-evaluation\\benchmarks\\asr_en_fr\\clips\\fr_syn_short_02.wav",
+      "forced": {
+        "latency_s": 4.099,
+        "rtf": 1.65,
+        "rss_mb_before": 442.9,
+        "rss_mb_after": 442.9,
+        "cpu_percent": 485.2,
+        "transcription": "Merci de m'écouter. Cela m'aide beaucoup.",
+        "detected_language": "fr",
+        "language_probability": 1,
+        "mode": "forced_language",
+        "requested_language": "fr"
+      },
+      "wer_forced": 0.3333,
+      "auto_detect": {
+        "latency_s": 8.465,
+        "rtf": 3.407,
+        "rss_mb_before": 442.9,
+        "rss_mb_after": 442.8,
+        "cpu_percent": 435.0,
+        "transcription": "Merci de m'écouter. Cela m'aide beaucoup.",
+        "detected_language": "fr",
+        "language_probability": 0.9971,
+        "mode": "auto_detect"
+      },
+      "wer_auto": 0.3333
+    }
+  ]
+}

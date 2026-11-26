@@ -6,6 +6,7 @@ LISTENING, REFLECTION, PRACTICAL_ADVICE, and UNCLEAR intents in EN, RW, and FR.
 
 import json
 import unittest
+from typing import Optional
 from unittest.mock import MagicMock
 
 from src.conversation.engine import ConversationEngine
@@ -26,13 +27,26 @@ class TestEmotionalIntentFidelity(unittest.TestCase):
     - Clarification Contract: `requires_clarification` suppresses unsolicited recommendations.
     """
 
-    def _create_engine_with_mock_llm(self, response_text: str, intent: InteractionIntent, requires_clarification: bool = False):
+    def _create_engine_with_mock_llm(
+        self,
+        response_text: str,
+        intent: InteractionIntent,
+        requires_clarification: bool = False,
+        *,
+        auxiliary_exercise_id: Optional[str] = "breathing_gentle_rhythm",
+    ):
         mock_llm = MagicMock(spec=AfriqueQwenLLM)
         mock_llm.generate_completion.return_value = json.dumps({
             "response_text": response_text,
             "interaction_intent": intent.value,
             "requires_clarification": requires_clarification,
         })
+        mock_llm.n_ctx = 4096
+        mock_llm.max_tokens = 512
+        mock_llm.count_tokens.return_value = 50
+        mock_llm.generate_auxiliary_json.return_value = {
+            "recommended_exercise_id": auxiliary_exercise_id,
+        }
         manager = ConversationManager(llm=mock_llm)
         engine = ConversationEngine(manager=manager)
         return engine, mock_llm
@@ -96,6 +110,7 @@ class TestEmotionalIntentFidelity(unittest.TestCase):
         engine, _ = self._create_engine_with_mock_llm(
             response_text="Looking back at that meeting, what do you think triggered that reaction?",
             intent=InteractionIntent.REFLECTION,
+            auxiliary_exercise_id=None,
         )
         result = engine.process_turn(TurnRequest(
             user_text="I was thinking about the project review and wondering why they reacted that way."

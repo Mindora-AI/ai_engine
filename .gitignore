@@ -1,5 +1,6 @@
 # Virtual Environment
 .venv/
+.venv-asr312/
 venv/
 env/
 ENV/

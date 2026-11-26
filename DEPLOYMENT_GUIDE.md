@@ -15,7 +15,7 @@ Your application
     → HTTPS public ngrok URL
         → FastAPI (scripts/serve_api.py) in Colab
             → ConversationEngine (AfriqueQwen GGUF)
-            → ASREngine (Hugging Face ASR)
+            → ASREngine (Kinyarwanda Health ASR; optional Whisper Small for en/fr)
             → TTSEngine (KinyaFlex + Piper)
 ```
 

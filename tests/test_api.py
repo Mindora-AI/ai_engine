@@ -9,12 +9,13 @@ import os
 import unittest
 import wave
 from pathlib import Path
-from unittest.mock import MagicMock, patch
+from unittest.mock import ANY, MagicMock, patch
 
 from fastapi.testclient import TestClient
 
 from src.api.app import app
 from src.api.service import MWIZERWAApiService
+from src.tts.tts_engine import TTSSynthesisError
 
 
 def _tiny_wav_bytes() -> bytes:
@@ -167,6 +168,8 @@ class TestMWIZERWAApi(unittest.TestCase):
         data = r.json()
         self.assertEqual(data["transcription"], "Muraho")
         self.assertEqual(data["response_text"], "Muraho neza!")
+        self.assertEqual(data["audio_status"], "success")
+        self.assertEqual(data["asr_language"], "rw")
         self.assertTrue(data["audio_base64"])
         wav = base64.b64decode(data["audio_base64"])
         self.assertGreater(len(wav), 44)
@@ -242,6 +245,68 @@ class TestMWIZERWAApi(unittest.TestCase):
         r = self.client.post("/chat", json={"user_text": "Muraho"})
         self.assertEqual(r.status_code, 500)
         self.assertEqual(r.json()["detail"], "Unable to process this message. Please try again.")
+
+    def test_transcribe_defaults_language_rw(self):
+        r = self.client.post(
+            "/transcribe",
+            files={"audio": ("test.wav", _tiny_wav_bytes(), "audio/wav")},
+        )
+        self.assertEqual(r.status_code, 200)
+        self.assertEqual(r.json()["language"], "rw")
+        self.mock_asr.transcribe_audio.assert_called_with(ANY, language=None)
+
+    def test_transcribe_passes_en_to_whisper_backend(self):
+        r = self.client.post(
+            "/transcribe",
+            data={"language": "en"},
+            files={"audio": ("test.wav", _tiny_wav_bytes(), "audio/wav")},
+        )
+        self.assertEqual(r.status_code, 200)
+        self.assertEqual(r.json()["language"], "en")
+        self.mock_asr.transcribe_audio.assert_called_with(ANY, language="en")
+
+    def test_transcribe_rejects_unsupported_language(self):
+        r = self.client.post(
+            "/transcribe",
+            data={"language": "de"},
+            files={"audio": ("test.wav", _tiny_wav_bytes(), "audio/wav")},
+        )
+        self.assertIn(r.status_code, (400, 422))
+
+    def test_voice_language_propagates_to_asr_and_chat(self):
+        r = self.client.post(
+            "/voice",
+            data={"language": "fr"},
+            files={"audio": ("u.wav", _tiny_wav_bytes(), "audio/wav")},
+        )
+        self.assertEqual(r.status_code, 200)
+        self.assertEqual(r.json()["asr_language"], "fr")
+        self.mock_asr.transcribe_audio.assert_called_with(ANY, language="fr")
+
+    def test_voice_tts_failure_partial_success(self):
+        self.mock_tts.synthesize_speech.side_effect = TTSSynthesisError("boom")
+        before = self.mock_llm.generate_completion.call_count
+        r = self.client.post(
+            "/voice",
+            files={"audio": ("u.wav", _tiny_wav_bytes(), "audio/wav")},
+        )
+        self.assertEqual(r.status_code, 200)
+        data = r.json()
+        self.assertEqual(data["transcription"], "Muraho")
+        self.assertEqual(data["response_text"], "Muraho neza!")
+        self.assertEqual(data["audio_status"], "failed")
+        self.assertIsNone(data["audio_base64"])
+        self.assertIn("Speech", data["audio_error"] or "")
+        self.assertEqual(self.mock_llm.generate_completion.call_count, before + 1)
+
+    def test_health_includes_backend_readiness(self):
+        r = self.client.get("/health")
+        data = r.json()
+        self.assertIn("backends", data)
+        self.assertIn("llm", data["backends"])
+        self.assertIn("asr_whisper", data["backends"])
+        self.assertIn("tts", data["backends"])
+        self.assertTrue(data["backends"]["llm"]["loaded"])
 
 
 if __name__ == "__main__":

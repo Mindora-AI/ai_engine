@@ -23,6 +23,10 @@ class TestExercisePipelineIntegration(unittest.TestCase):
         self.mock_llm = MagicMock()
         self.mock_llm.n_ctx = 4096
         self.mock_llm.max_tokens = 512
+        self.mock_llm.count_tokens.return_value = 50
+        self.mock_llm.generate_auxiliary_json.return_value = {
+            "recommended_exercise_id": None,
+        }
         self.manager = ConversationManager(llm=self.mock_llm)
         self.engine = ConversationEngine(manager=self.manager)
 
@@ -97,6 +101,9 @@ class TestExercisePipelineIntegration(unittest.TestCase):
             "requires_clarification": False,
         })
         self.mock_llm.generate_completion.return_value = safe_json
+        self.mock_llm.generate_auxiliary_json.return_value = {
+            "recommended_exercise_id": "breathing_gentle_rhythm",
+        }
 
         res = self.engine.process_turn(
             TurnRequest(user_text="I am reflecting on today and I feel so tense and physically stressed.", language="en")
@@ -107,6 +114,7 @@ class TestExercisePipelineIntegration(unittest.TestCase):
         self.assertIn("Gentle Rhythmic Breathing", res.response_text)
         self.assertEqual(self.engine.state.exercise_state.status, ExerciseStatus.OFFERED)
         self.assertEqual(self.engine.state.exercise_state.offered_exercise_id, "breathing_gentle_rhythm")
+        self.assertEqual(res.recommended_exercise_id, "breathing_gentle_rhythm")
 
     def test_listening_intent_never_causes_unsolicited_offer(self):
         safe_json = json.dumps({
@@ -327,6 +335,9 @@ class TestExercisePipelineIntegration(unittest.TestCase):
         self.assertEqual(self.engine.state.exercise_state.cooldown_turns_remaining, 0)
 
         # Turn T+6: Unsolicited offers eligible again
+        self.mock_llm.generate_auxiliary_json.return_value = {
+            "recommended_exercise_id": "breathing_gentle_rhythm",
+        }
         res_t6 = self.engine.process_turn(
             TurnRequest(user_text="I am reflecting and I feel so tense and physically stressed.", language="en")
         )

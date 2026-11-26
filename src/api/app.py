@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import base64
+import json
 import logging
 from contextlib import asynccontextmanager
 from pathlib import Path
@@ -21,15 +22,35 @@ from src.api.schemas import (
     MemoryConsentResponse,
     TranscribeResponse,
     VoiceResponse,
+    TurnContextRequest,
 )
 from src.memory.consent import ConsentDecision
 from src.memory.dev_consent import dev_memory_consent_enabled
+from src.api.context_mapping import build_turn_context
+from src.conversation.context_integration import TurnContextValidationError
+from src.api.readiness import build_backend_readiness
 from src.api.service import _public_metadata, get_api_service
+from src.asr.exceptions import UnsupportedASRLanguageError, WhisperASRNotAvailableError
 from src.tts.tts_engine import TTSSynthesisError, UnsupportedTTSLanguageError
 
 logger = logging.getLogger(__name__)
 
 SUPPORTED_TTS_LANGS = ("rw", "en", "fr")
+SUPPORTED_ASR_LANGS = ("rw", "en", "fr")
+
+
+def _normalize_asr_language_form(language: Optional[str]) -> Optional[str]:
+    if language is None:
+        return None
+    lang = language.strip().lower()
+    if not lang:
+        return None
+    if lang not in SUPPORTED_ASR_LANGS:
+        raise HTTPException(
+            status.HTTP_400_BAD_REQUEST,
+            detail=f"Unsupported language '{language}'. Supported: rw, en, fr.",
+        )
+    return lang
 
 
 @asynccontextmanager
@@ -60,9 +81,18 @@ app = FastAPI(
 )
 def health():
     service = get_api_service()
+    backends = build_backend_readiness(service)
     if service.engine_initialized:
-        return HealthResponse(status="ready", engine_initialized=True)
-    return HealthResponse(status="unavailable", engine_initialized=False)
+        return HealthResponse(
+            status="ready",
+            engine_initialized=True,
+            backends=backends,
+        )
+    return HealthResponse(
+        status="unavailable",
+        engine_initialized=False,
+        backends=backends,
+    )
 
 
 @app.post(
@@ -83,13 +113,20 @@ def chat(body: ChatRequest):
         )
 
     try:
+        turn_context = build_turn_context(body.context)
         session_id, result = service.process_chat(
             user_text=body.user_text,
             session_id=body.session_id,
             mode=body.mode,
             language=body.language,
             user_id=body.user_id,
+            context=turn_context,
         )
+    except TurnContextValidationError as e:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=str(e),
+        ) from e
     except ValueError as e:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
@@ -107,6 +144,7 @@ def chat(body: ChatRequest):
         response_text=result.response_text,
         mode=result.mode.value,
         language=result.language,
+        recommended_exercise_id=result.recommended_exercise_id,
         metadata=_public_metadata(result.metadata),
     )
 
@@ -206,15 +244,32 @@ def tts(
 )
 async def transcribe(
     audio: UploadFile = File(..., description="Audio file (WAV, MP3, FLAC, OGG, WebM, …)"),
+    language: Optional[Literal["rw", "en", "fr"]] = Form(
+        default=None,
+        description="ASR language. Omit for Kinyarwanda (default).",
+    ),
 ):
     service = get_api_service()
     upload_path: Optional[Path] = None
     try:
+        asr_lang = _normalize_asr_language_form(language)
         upload_path = write_upload_to_tempfile(audio)
-        transcription = service.transcribe_file(upload_path)
-        return TranscribeResponse(transcription=transcription)
+        transcription, effective_lang = service.transcribe_file(
+            upload_path, language=asr_lang
+        )
+        return TranscribeResponse(
+            transcription=transcription,
+            language=effective_lang,
+        )
     except HTTPException:
         raise
+    except UnsupportedASRLanguageError as e:
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, detail=str(e)) from e
+    except WhisperASRNotAvailableError as e:
+        raise HTTPException(
+            status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail=str(e),
+        ) from e
     except ValueError as e:
         raise HTTPException(status.HTTP_400_BAD_REQUEST, detail=str(e)) from e
     except FileNotFoundError as e:
@@ -247,7 +302,15 @@ async def voice(
     audio: UploadFile = File(..., description="User speech audio"),
     session_id: Optional[str] = Form(default=None),
     mode: Optional[Literal["gentle", "normal", "motivational"]] = Form(default=None),
+    language: Optional[Literal["rw", "en", "fr"]] = Form(
+        default=None,
+        description="ASR and conversation language hint. Omit for Kinyarwanda (default).",
+    ),
     speaker_id: int = Form(default=0, ge=0, le=2),
+    context_json: Optional[str] = Form(
+        default=None,
+        description="Optional JSON object matching TurnContextRequest fields.",
+    ),
 ):
     service = get_api_service()
     if not service.engine_initialized:
@@ -257,26 +320,65 @@ async def voice(
         )
 
     upload_path: Optional[Path] = None
+    turn_context = None
+    if context_json is not None and context_json.strip():
+        try:
+            turn_context = build_turn_context(
+                TurnContextRequest.model_validate(json.loads(context_json))
+            )
+        except TurnContextValidationError as e:
+            raise HTTPException(status.HTTP_400_BAD_REQUEST, detail=str(e)) from e
+        except json.JSONDecodeError as e:
+            raise HTTPException(
+                status.HTTP_400_BAD_REQUEST,
+                detail="context_json must be valid JSON.",
+            ) from e
+        except Exception as e:
+            raise HTTPException(
+                status.HTTP_400_BAD_REQUEST,
+                detail=f"Invalid context_json: {e}",
+            ) from e
     try:
+        asr_lang = _normalize_asr_language_form(language)
         upload_path = write_upload_to_tempfile(audio)
-        sid, transcript, result, audio_bytes = service.process_voice_turn(
-            upload_path,
-            session_id=session_id,
-            mode=mode,
-            speaker_id=speaker_id,
+        sid, transcript, used_asr_lang, result, audio_bytes, audio_error = (
+            service.process_voice_turn(
+                upload_path,
+                session_id=session_id,
+                mode=mode,
+                language=asr_lang,
+                speaker_id=speaker_id,
+                context=turn_context,
+            )
         )
+        tts_ok = audio_bytes is not None
         return VoiceResponse(
             session_id=sid,
             transcription=transcript,
             response_text=result.response_text,
             mode=result.mode.value,
             language=result.language,
+            asr_language=used_asr_lang,
+            recommended_exercise_id=result.recommended_exercise_id,
             metadata=_public_metadata(result.metadata),
-            audio_base64=base64.b64encode(audio_bytes).decode("ascii"),
-            audio_media_type="audio/wav",
+            audio_base64=(
+                base64.b64encode(audio_bytes).decode("ascii") if tts_ok else None
+            ),
+            audio_status="success" if tts_ok else "failed",
+            audio_error=audio_error,
+            audio_media_type="audio/wav" if tts_ok else None,
         )
     except HTTPException:
         raise
+    except UnsupportedASRLanguageError as e:
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, detail=str(e)) from e
+    except WhisperASRNotAvailableError as e:
+        raise HTTPException(
+            status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail=str(e),
+        ) from e
+    except TurnContextValidationError as e:
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, detail=str(e)) from e
     except ValueError as e:
         raise HTTPException(status.HTTP_400_BAD_REQUEST, detail=str(e)) from e
     except FileNotFoundError:

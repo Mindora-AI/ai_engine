@@ -5,8 +5,9 @@ Defines lightweight domain models and enums for conversational turns and session
 
 from dataclasses import dataclass, field
 from enum import Enum
-from typing import Dict, Any, Optional
+from typing import Dict, Any, List, Optional
 from src.utils.language_detector import LanguageDetectionResult
+from src.exercises.categories import ExerciseCategory
 from src.exercises.models import ExerciseSessionState
 
 
@@ -32,6 +33,27 @@ class SessionState:
     exercise_state: ExerciseSessionState = field(default_factory=ExerciseSessionState)
 
 
+@dataclass(frozen=True)
+class EligibleExerciseCandidate:
+    """
+    Backend-supplied descriptor of an eligible, verified exercise candidate.
+    """
+    id: str
+    category: ExerciseCategory
+    purpose_summary: Optional[str] = None
+
+
+@dataclass
+class TurnContext:
+    """
+    Optional backend-supplied trusted application context for a turn.
+    """
+    approved_memory_summary: Optional[str] = None
+    recent_turns: Optional[List[Dict[str, str]]] = None
+    eligible_exercises: Optional[List[EligibleExerciseCandidate]] = None
+    backend_supplied_approved_memory: bool = False
+
+
 @dataclass
 class TurnRequest:
     """
@@ -41,6 +63,7 @@ class TurnRequest:
     mode: Optional[ConversationMode] = None
     language: Optional[str] = None
     user_id: Optional[str] = None
+    context: Optional[TurnContext] = None
     metadata: Dict[str, Any] = field(default_factory=dict)
 
 
@@ -53,4 +76,5 @@ class TurnResult:
     mode: ConversationMode
     language: Optional[str] = None
     language_result: Optional[LanguageDetectionResult] = None
+    recommended_exercise_id: Optional[str] = None
     metadata: Dict[str, Any] = field(default_factory=dict)

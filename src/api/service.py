@@ -8,9 +8,10 @@ import uuid
 from pathlib import Path
 from typing import Any, Dict, Optional, Tuple
 
-from src.asr.asr_engine import ASREngine
+from src.asr.asr_engine import ASREngine, resolve_asr_language
+from src.asr.exceptions import UnsupportedASRLanguageError, WhisperASRNotAvailableError
 from src.conversation.engine import ConversationEngine
-from src.conversation.session import ConversationMode, TurnRequest, TurnResult
+from src.conversation.session import ConversationMode, TurnContext, TurnRequest, TurnResult
 from src.llm.afrique_qwen import AfriqueQwenLLM
 from src.llm.conversation import ConversationManager
 from src.tts.tts_engine import TTSEngine, TTSSynthesisError, UnsupportedTTSLanguageError
@@ -39,6 +40,7 @@ PUBLIC_METADATA_KEYS = frozenset(
         "cooldown_turns_remaining",
         "memory_proposals",
         "rolling_summary_active",
+        "safety_signal",
     }
 )
 
@@ -51,10 +53,18 @@ def _public_metadata(metadata: Dict[str, Any]) -> Dict[str, Any]:
         value = metadata[key]
         if value is None:
             continue
-        if hasattr(value, "value"):
-            value = value.value
-        out[key] = value
+        out[key] = _normalize_metadata_public_value(value)
     return out
+
+
+def _normalize_metadata_public_value(value: Any) -> Any:
+    if hasattr(value, "value"):
+        return value.value
+    if isinstance(value, dict):
+        return {k: _normalize_metadata_public_value(v) for k, v in value.items()}
+    if isinstance(value, list):
+        return [_normalize_metadata_public_value(v) for v in value]
+    return value
 
 
 class MWIZERWAApiService:
@@ -117,6 +127,7 @@ class MWIZERWAApiService:
         mode: Optional[str] = None,
         language: Optional[str] = None,
         user_id: Optional[str] = None,
+        context: Optional[TurnContext] = None,
     ) -> Tuple[str, TurnResult]:
         if not self.engine_initialized:
             raise RuntimeError("Engine not initialized")
@@ -128,6 +139,7 @@ class MWIZERWAApiService:
             mode=conv_mode,
             language=language,
             user_id=user_id,
+            context=context,
         )
 
         with self._inference_lock:
@@ -195,41 +207,72 @@ class MWIZERWAApiService:
             safe_unlink(out_path)
             raise
 
-    def transcribe_file(self, audio_path: Path) -> str:
+    def transcribe_file(
+        self, audio_path: Path, *, language: Optional[str] = None
+    ) -> Tuple[str, str]:
+        """Returns (transcript, effective ASR language code)."""
+        effective_lang = resolve_asr_language(language)
+        if effective_lang in ("en", "fr"):
+            asr_lang: Optional[str] = effective_lang
+        elif language is not None:
+            asr_lang = effective_lang
+        else:
+            asr_lang = None
         with self._asr_lock:
-            text = self.get_asr().transcribe_audio(audio_path)
+            text = self.get_asr().transcribe_audio(audio_path, language=asr_lang)
         if not text.strip():
             raise ValueError("Transcription is empty.")
-        return text.strip()
+        return text.strip(), effective_lang
+
+    @staticmethod
+    def _safe_tts_client_message(exc: Exception) -> str:
+        if isinstance(exc, FileNotFoundError):
+            return "Speech synthesis models are not available on this server."
+        if isinstance(exc, (UnsupportedTTSLanguageError, TTSSynthesisError, ValueError)):
+            return "Speech synthesis could not be completed for this response."
+        return "Speech synthesis failed."
 
     def process_voice_turn(
         self,
         audio_path: Path,
         session_id: Optional[str] = None,
         mode: Optional[str] = None,
+        language: Optional[str] = None,
         speaker_id: int = 0,
-    ) -> Tuple[str, str, TurnResult, bytes]:
-        """ASR → chat → TTS under inference lock; returns (sid, transcript, result, wav_bytes)."""
+        context: Optional[TurnContext] = None,
+    ) -> Tuple[str, str, str, TurnResult, Optional[bytes], Optional[str]]:
+        """ASR → chat → TTS. Chat runs once; TTS failure does not re-run chat."""
         if not self.engine_initialized:
             raise RuntimeError("Engine not initialized")
 
-        transcript = self.transcribe_file(audio_path)
+        transcript, asr_lang = self.transcribe_file(audio_path, language=language)
+        chat_lang: Optional[str] = None
+        if language is not None and language.strip():
+            chat_lang = resolve_asr_language(language)
         wav_path: Optional[Path] = None
+        audio_bytes: Optional[bytes] = None
+        audio_error: Optional[str] = None
         try:
             with self._inference_lock:
                 sid, result = self.process_chat(
                     user_text=transcript,
                     session_id=session_id,
                     mode=mode,
+                    language=chat_lang,
+                    context=context,
                 )
-                response_lang = result.language
+            response_lang = result.language
+            try:
                 wav_path = self.synthesize_tts(
                     result.response_text,
                     language=response_lang,
                     speaker_id=speaker_id,
                 )
                 audio_bytes = wav_path.read_bytes()
-            return sid, transcript, result, audio_bytes
+            except Exception as e:
+                logger.exception("TTS failed after successful voice chat turn")
+                audio_error = self._safe_tts_client_message(e)
+            return sid, transcript, asr_lang, result, audio_bytes, audio_error
         finally:
             safe_unlink(wav_path)
 
