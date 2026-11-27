@@ -31,45 +31,9 @@ if str(PROJECT_ROOT) not in sys.path:
 from src.runtime.model_paths import get_models_root  # noqa: E402
 
 
-def build_model_specs(models_root: Optional[Path] = None) -> tuple[Dict[str, Dict[str, Any]], Dict[str, Dict[str, Any]]]:
+def build_model_specs(models_root: Optional[Path] = None) -> Dict[str, Dict[str, Any]]:
     """Build download specs using centralized models root (local or Google Drive)."""
     root = Path(models_root) if models_root else get_models_root()
-    piper = {
-        "piper-en": {
-            "name": "Piper TTS — English (en_US-ljspeech-medium)",
-            "repo_id": "rhasspy/piper-voices",
-            "files": [
-                {
-                    "filename": "en/en_US/ljspeech/medium/en_US-ljspeech-medium.onnx",
-                    "expected_filename": "en_US-ljspeech-medium.onnx",
-                },
-                {
-                    "filename": "en/en_US/ljspeech/medium/en_US-ljspeech-medium.onnx.json",
-                    "expected_filename": "en_US-ljspeech-medium.onnx.json",
-                },
-            ],
-            "dest_dir": root / "piper" / "en_US-ljspeech-medium",
-            "approx_size_bytes": 70_000_000,
-            "verify_sha256": False,
-        },
-        "piper-fr": {
-            "name": "Piper TTS — French (fr_FR-siwis-medium)",
-            "repo_id": "rhasspy/piper-voices",
-            "files": [
-                {
-                    "filename": "fr/fr_FR/siwis/medium/fr_FR-siwis-medium.onnx",
-                    "expected_filename": "fr_FR-siwis-medium.onnx",
-                },
-                {
-                    "filename": "fr/fr_FR/siwis/medium/fr_FR-siwis-medium.onnx.json",
-                    "expected_filename": "fr_FR-siwis-medium.onnx.json",
-                },
-            ],
-            "dest_dir": root / "piper" / "fr_FR-siwis-medium",
-            "approx_size_bytes": 70_000_000,
-            "verify_sha256": False,
-        },
-    }
     models = {
         "llm": {
             "name": "AfriqueQwen3.5-4B-Instruct GGUF",
@@ -92,10 +56,10 @@ def build_model_specs(models_root: Optional[Path] = None) -> tuple[Dict[str, Dic
             "verify_sha256": True,
         },
     }
-    return models, piper
+    return models
 
 
-MODELS, PIPER_VOICES = build_model_specs()
+MODELS = build_model_specs()
 
 
 def compute_sha256(filepath: Path) -> str:
@@ -131,70 +95,6 @@ def check_model_status(key: str, spec: Dict[str, Any], verify_hash: bool = True)
         "actual_hash": actual_hash,
         "expected_hash": spec.get("expected_sha256"),
     }
-
-
-def check_piper_voice_status(key: str, spec: Dict[str, Any]) -> Dict[str, Any]:
-    """Inspect Piper voice bundle (ONNX + JSON)."""
-    dest_dir = spec["dest_dir"]
-    paths = [dest_dir / f["expected_filename"] for f in spec["files"]]
-    exists = all(p.is_file() for p in paths)
-    total_size = sum(p.stat().st_size for p in paths if p.is_file())
-    return {
-        "key": key,
-        "name": spec["name"],
-        "paths": paths,
-        "exists": exists,
-        "size_bytes": total_size,
-        "size_mb": round(total_size / (1024 * 1024), 2),
-        "hash_matched": None,
-        "actual_hash": None,
-        "expected_hash": None,
-    }
-
-
-def download_piper_voice(key: str, spec: Dict[str, Any], force: bool = False) -> bool:
-    """Download ONNX + JSON for a Piper voice from Hugging Face."""
-    try:
-        from huggingface_hub import hf_hub_download
-    except ImportError:
-        print("[Error] 'huggingface_hub' is required. Install via: pip install huggingface_hub", file=sys.stderr)
-        return False
-
-    dest_dir = spec["dest_dir"]
-    dest_dir.mkdir(parents=True, exist_ok=True)
-
-    status = check_piper_voice_status(key, spec)
-    if status["exists"] and not force:
-        print(f"[Already Present] {spec['name']}: {dest_dir}")
-        return True
-
-    disk_free = shutil.disk_usage(dest_dir).free
-    if disk_free < spec["approx_size_bytes"] + (100 * 1024 * 1024):
-        print(
-            f"[Error] Insufficient disk space for {spec['name']} under {dest_dir}.",
-            file=sys.stderr,
-        )
-        return False
-
-    print(f"\n[Downloading] {spec['name']} from {spec['repo_id']}...")
-    for file_spec in spec["files"]:
-        dest_path = dest_dir / file_spec["expected_filename"]
-        if dest_path.is_file() and not force:
-            print(f"  [Skip] {dest_path.name}")
-            continue
-        try:
-            cached = hf_hub_download(
-                repo_id=spec["repo_id"],
-                filename=file_spec["filename"],
-            )
-            shutil.copy2(cached, dest_path)
-            print(f"  [OK] {dest_path.name}")
-        except Exception as e:
-            print(f"[Error] Failed to download {file_spec['filename']}: {e}", file=sys.stderr)
-            return False
-
-    print(f"[Success] {spec['name']} ready at {dest_dir}\n")
-    return True
 
 
 def download_model(key: str, spec: Dict[str, Any], force: bool = False) -> bool:
@@ -289,12 +189,9 @@ def main():
     )
     parser.add_argument(
         "--model",
-        choices=["all", "llm", "tts", "piper", "piper-en", "piper-fr"],
+        choices=["all", "llm", "tts"],
         default="all",
-        help=(
-            "Which checkpoint to download or check (default: all). "
-            "'piper' downloads both English and French Piper voices."
-        ),
+        help="Which checkpoint to download or check (default: all). EN/FR TTS uses Pocket TTS via pip.",
     )
     parser.add_argument(
         "--force",
@@ -309,18 +206,13 @@ def main():
     )
     args = parser.parse_args()
 
-    global MODELS, PIPER_VOICES
+    global MODELS
     if args.models_dir:
         os.environ["MWIZERWA_MODELS_DIR"] = str(Path(args.models_dir).expanduser())
-    MODELS, PIPER_VOICES = build_model_specs()
+    MODELS = build_model_specs()
     print(f"Models root: {get_models_root()}\n")
 
-    if args.model == "all":
-        target_keys = ["llm", "tts", "piper-en", "piper-fr"]
-    elif args.model == "piper":
-        target_keys = ["piper-en", "piper-fr"]
-    else:
-        target_keys = [args.model]
+    target_keys = ["llm", "tts"] if args.model == "all" else [args.model]
 
     print("=" * 70)
     print("MWIZERWA AI — Model Checkpoint Status")
@@ -328,19 +220,6 @@ def main():
 
     all_ok = True
     for key in target_keys:
-        if key in PIPER_VOICES:
-            status = check_piper_voice_status(key, PIPER_VOICES[key])
-            print(f"\nModel: {status['name']}")
-            for p in status["paths"]:
-                print(f"  File:     {p}")
-                print(f"  Present:  {'YES' if p.is_file() else 'NO'}")
-            print(f"  Bundle:   {'READY' if status['exists'] else 'MISSING'}")
-            if status["exists"]:
-                print(f"  Size:     {status['size_mb']} MB (combined)")
-            else:
-                all_ok = False
-            continue
-
         spec = MODELS[key]
         status = check_model_status(key, spec, verify_hash=True)
 
@@ -369,16 +248,12 @@ def main():
         else:
             print("[Check Result] One or more checkpoints are missing or invalid.")
             print("  KinyaFlex / LLM: python scripts/download_models.py")
-            print("  Piper voices:    python scripts/download_models.py --model piper")
             sys.exit(1)
 
     # Perform downloads if not verify-only
     success = True
     for key in target_keys:
-        if key in PIPER_VOICES:
-            ok = download_piper_voice(key, PIPER_VOICES[key], force=args.force)
-        else:
-            ok = download_model(key, MODELS[key], force=args.force)
+        ok = download_model(key, MODELS[key], force=args.force)
         if not ok:
             success = False
 

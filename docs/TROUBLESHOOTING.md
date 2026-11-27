@@ -61,7 +61,7 @@ This document lists common issues, error messages, root causes, and verified res
 
 ## 3. Audio and Multimodal Pipeline Issues
 
-### 3.1 `[TTS Error]` / missing Piper or KinyaFlex models
+### 3.1 `[TTS Error]` / missing KinyaFlex or Pocket TTS
 - **Symptom:** Synthesis fails with `FileNotFoundError` or `download_models.py` in the message.
 - **Cause:** Model weights are not present under `models/` (directory is gitignored).
 - **Resolution (PowerShell):**
@@ -69,17 +69,18 @@ This document lists common issues, error messages, root causes, and verified res
   .\.venv\Scripts\activate
   python scripts/download_models.py --check
   python scripts/download_models.py
-  python scripts/download_models.py --model piper
+  pip install pocket-tts
   ```
 - **Symptom:** `UnsupportedTTSLanguageError` — no audio, message about uncertain language.
 - **Cause:** Response text language could not be classified reliably; routing refuses the wrong engine.
 - **Resolution:** Rephrase or ensure the assistant response is clearly in `rw`, `en`, or `fr`.
 
-### 3.2 `piper-tts` / `onnxruntime` import errors
+### 3.2 `pocket-tts` import errors
 - **Resolution:**
   ```powershell
-  pip install piper-tts onnxruntime
+  pip install pocket-tts
   ```
+- Accept [kyutai/pocket-tts](https://huggingface.co/kyutai/pocket-tts) terms on Hugging Face if prompted; first EN/FR synthesis downloads weights.
 
 ### 3.3 ASR First-Run Download Hangs
 - **Symptom:** `run_assistant.py --mode voice` pauses at `[1/4] Transcribing audio with ASR...` for several minutes.

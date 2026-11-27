@@ -27,7 +27,6 @@ from src.runtime.model_paths import (  # noqa: E402
     get_output_root,
     resolve_kinya_flex_checkpoint,
     resolve_llm_gguf_path,
-    resolve_piper_voices_root,
 )
 
 DEFAULT_COLAB_PROJECT = Path("/content/ai_engine")
@@ -342,8 +341,6 @@ def configure_drive_persistence(
     for sub in (
         "models/afriqueqwen",
         "models/kinya-flex-tts",
-        "models/piper/en_US-ljspeech-medium",
-        "models/piper/fr_FR-siwis-medium",
     ):
         full = drive_root / sub
         print(f"  {sub}  exists={full.exists()}")
@@ -356,22 +353,21 @@ def configure_drive_persistence(
 
 def report_model_asset_status() -> Dict[str, bool]:
     """Print expected loader paths; return presence map (dirs may exist without files)."""
+    import importlib.util
+
+    pocket_ok = importlib.util.find_spec("pocket_tts") is not None
     checks = {
         "llm_gguf": resolve_llm_gguf_path(),
         "kinya_flex": resolve_kinya_flex_checkpoint(),
-        "piper_en": resolve_piper_voices_root()
-        / "en_US-ljspeech-medium"
-        / "en_US-ljspeech-medium.onnx",
-        "piper_fr": resolve_piper_voices_root()
-        / "fr_FR-siwis-medium"
-        / "fr_FR-siwis-medium.onnx",
     }
-    status: Dict[str, bool] = {}
+    status = {}
     print("[Models] Asset status (file must exist before inference):")
     for name, path in checks.items():
         ok = path.is_file()
         status[name] = ok
         print(f"  {'OK' if ok else 'MISSING':7} {name}: {path}")
+    status["pocket_tts_package"] = pocket_ok
+    print(f"  {'OK' if pocket_ok else 'MISSING':7} pocket_tts_package: pip package importable")
     print(f"[Models] models root: {get_models_root()}")
     print(f"[Models] cache root: {get_cache_root()}")
     print(f"[Models] outputs root: {get_output_root()}")
@@ -718,10 +714,10 @@ CRITICAL_IMPORTS: Tuple[ImportSpec, ...] = (
         "Pulled in by transformers / model download.",
     ),
     ImportSpec(
-        "onnxruntime",
-        "import onnxruntime",
+        "pocket_tts",
+        "import pocket_tts",
         True,
-        "Required for Piper TTS.",
+        "Required for English/French TTS (weights from Hugging Face on first use).",
     ),
 )
 

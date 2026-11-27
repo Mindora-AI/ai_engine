@@ -196,7 +196,6 @@ def tts(
         default=None,
         description="Target language. Omit to detect from text (assistant-response routing).",
     ),
-    speaker_id: int = Form(default=0, ge=0, le=2),
 ):
     text = text.strip()
     if not text:
@@ -205,7 +204,7 @@ def tts(
     service = get_api_service()
     wav_path: Optional[Path] = None
     try:
-        wav_path = service.synthesize_tts(text, language=language, speaker_id=speaker_id)
+        wav_path = service.synthesize_tts(text, language=language)
         data = wav_path.read_bytes()
         safe_unlink(wav_path)
         return Response(
@@ -306,7 +305,6 @@ async def voice(
         default=None,
         description="ASR and conversation language hint. Omit for Kinyarwanda (default).",
     ),
-    speaker_id: int = Form(default=0, ge=0, le=2),
     context_json: Optional[str] = Form(
         default=None,
         description="Optional JSON object matching TurnContextRequest fields.",
@@ -347,7 +345,6 @@ async def voice(
                 session_id=session_id,
                 mode=mode,
                 language=asr_lang,
-                speaker_id=speaker_id,
                 context=turn_context,
             )
         )

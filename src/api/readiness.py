@@ -9,7 +9,7 @@ from typing import Any, Dict, Optional
 
 from src.asr.kinya_health_asr import KinyaHealthASREngine, MODEL_ID as KINYA_ASR_MODEL_ID
 from src.asr.whisper_asr import DEFAULT_WHISPER_MODEL, WhisperASREngine
-from src.runtime.model_paths import resolve_llm_gguf_path, resolve_kinya_flex_checkpoint, resolve_piper_voices_root
+from src.runtime.model_paths import resolve_llm_gguf_path, resolve_kinya_flex_checkpoint
 from src.tts.tts_engine import DEFAULT_MODEL_PATH
 from typing import TYPE_CHECKING
 
@@ -36,18 +36,16 @@ def _hf_whisper_small_cached() -> bool:
 
 def _tts_artifact_status(service: "MWIZERWAApiService") -> Dict[str, Any]:
     kinya_ckpt = resolve_kinya_flex_checkpoint().is_file()
-    piper_root = resolve_piper_voices_root()
-    piper_en = any(piper_root.glob("**/en_US*.onnx")) if piper_root.is_dir() else False
-    piper_fr = any(piper_root.glob("**/fr_FR*.onnx")) if piper_root.is_dir() else False
+    pocket_pkg = _module_available("pocket_tts")
     loaded = service._tts is not None
     by_lang: Dict[str, Any] = {
         "rw": {"artifact_present": kinya_ckpt or DEFAULT_MODEL_PATH.is_file()},
-        "en": {"artifact_present": piper_en},
-        "fr": {"artifact_present": piper_fr},
+        "en": {"artifact_present": pocket_pkg},
+        "fr": {"artifact_present": pocket_pkg},
     }
     return {
-        "dependency_available": True,
-        "artifact_present": kinya_ckpt or piper_en or piper_fr,
+        "dependency_available": pocket_pkg,
+        "artifact_present": kinya_ckpt or pocket_pkg,
         "loaded": loaded,
         "languages": by_lang,
     }

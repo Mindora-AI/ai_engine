@@ -24,7 +24,7 @@ Environment: `MWIZERWA_API_HOST`, `MWIZERWA_API_PORT`, `MWIZERWA_MODELS_DIR`, `M
 ### Languages
 
 - **Chat / voice:** detected per turn (`rw`, `en`, `fr`).
-- **TTS:** `rw` → KinyaFlex; `en` / `fr` → Piper. Omit `language` on `/tts` to auto-detect from text.
+- **TTS:** `rw` → KinyaFlex (speaker 0); `en` / `fr` → Pocket TTS (`anna` / `estelle`). Omit `language` on `/tts` to auto-detect from text.
 
 ### Audio uploads
 
@@ -81,7 +81,7 @@ Cheap readiness check. Does **not** load models or hit the network.
 | `status` | `ready` when AfriqueQwen finished API startup load |
 | `engine_initialized` | Same gate as before (LLM) |
 | `backends.*.dependency_available` | Python package importable (not proof of quality) |
-| `backends.*.artifact_present` | Local GGUF / HF cache / Piper files where cheap to check |
+| `backends.*.artifact_present` | Local GGUF / KinyaFlex / `pocket-tts` import checks |
 | `backends.*.loaded` | Singleton already resident in this process |
 
 `artifact_present: null` means not checked without expensive initialization (e.g. HF Kinyarwanda weights until first `/transcribe`).
@@ -184,7 +184,6 @@ Optional `language` must be one of these codes (case-insensitive). Unsupported v
 |-------|------|----------|
 | `text` | string | yes |
 | `language` | `rw` \| `en` \| `fr` | no |
-| `speaker_id` | int (0–2) | no (KinyaFlex) |
 
 **Response:** `audio/wav` bytes.
 
@@ -238,7 +237,6 @@ Install optional EN/FR stack: `pip install -r requirements-asr-whisper.txt` (inc
 | `session_id` | string | no (reuse `/chat` session) |
 | `mode` | `gentle` \| `normal` \| `motivational` | no |
 | `language` | `rw` \| `en` \| `fr` | no (ASR default **`rw`**; same hint passed to chat) |
-| `speaker_id` | int | no |
 | `context_json` | string (JSON) | no (`TurnContextRequest`) |
 
 **Response (JSON)**
@@ -287,4 +285,4 @@ curl -X POST http://127.0.0.1:8000/voice \
 2. `python scripts/serve_api.py` (bind `0.0.0.0` via `MWIZERWA_API_HOST=0.0.0.0`).
 3. Expose with ngrok: `ngrok http 8000`.
 
-First `/transcribe` or `/voice` call loads ASR (HF). First `/tts` or `/voice` loads KinyaFlex/Piper lazily.
+First `/transcribe` or `/voice` call loads ASR (HF). First `/tts` or `/voice` loads KinyaFlex/Pocket TTS lazily.

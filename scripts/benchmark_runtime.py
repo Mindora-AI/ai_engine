@@ -111,7 +111,7 @@ def run_benchmark(asr_audio: Optional[Path] = None) -> Dict[str, Any]:
         from src.conversation.engine import ConversationEngine
         from src.conversation.session import TurnRequest
         from src.tts.tts_engine import TTSEngine
-        from src.tts.piper_engine import PiperTTSEngine
+        from src.tts.pocket_tts_engine import PocketTTSEngine
         from src.tts.kinya_flex_engine import KinyaFlexTTSEngine
         from src.asr.asr_engine import ASREngine
         from src.llm.prompts import SYSTEM_PROMPT
@@ -177,13 +177,13 @@ def run_benchmark(asr_audio: Optional[Path] = None) -> Dict[str, Any]:
     except Exception as e:
         out["llm_profile_error"] = type(e).__name__ + ": " + str(e)
 
-    piper = PiperTTSEngine()
+    pocket = PocketTTSEngine()
     for lang in ("en", "fr"):
         try:
-            out[f"piper_{lang}_load_cold_s"] = round(_timed(lambda l=lang: piper.load_voice(l)), 3)
-            out[f"piper_{lang}_load_warm_s"] = round(_timed(lambda l=lang: piper.load_voice(l)), 3)
+            out[f"pocket_{lang}_load_cold_s"] = round(_timed(lambda l=lang: pocket.load_model(l)), 3)
+            out[f"pocket_{lang}_load_warm_s"] = round(_timed(lambda l=lang: pocket.load_model(l)), 3)
         except Exception as e:
-            out[f"piper_{lang}_skip"] = str(e)
+            out[f"pocket_{lang}_skip"] = str(e)
 
     kinya = KinyaFlexTTSEngine()
     try:

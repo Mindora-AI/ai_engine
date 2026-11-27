@@ -55,10 +55,6 @@ def resolve_kinya_flex_checkpoint() -> Path:
     return get_models_root() / "kinya-flex-tts" / "kinya_flex_tts_base_trained.pt"
 
 
-def resolve_piper_voices_root() -> Path:
-    return get_models_root() / "piper"
-
-
 def drive_layout_docs() -> dict:
     """Recommended Google Drive layout under MyDrive/MWIZERWA/."""
     return {

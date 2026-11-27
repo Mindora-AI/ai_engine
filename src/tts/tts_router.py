@@ -2,7 +2,7 @@ from pathlib import Path
 from typing import Optional, Union
 
 from src.tts.kinya_flex_engine import KinyaFlexTTSEngine
-from src.tts.piper_engine import PiperTTSEngine
+from src.tts.pocket_tts_engine import PocketTTSEngine
 from src.utils.language_detector import LanguageDetectionResult, detect_language
 
 from src.runtime.model_paths import get_output_root, get_project_root
@@ -51,7 +51,7 @@ def resolve_response_language(
 
 
 def default_output_path(output_dir: Path = DEFAULT_OUTPUT_DIR) -> Path:
-    """Stable session output path (KinyaFlex and Piper)."""
+    """Stable session output path (KinyaFlex and Pocket TTS)."""
     output_dir.mkdir(parents=True, exist_ok=True)
     return output_dir / LATEST_RESPONSE_FILENAME
 
@@ -62,21 +62,19 @@ def latest_response_path(output_dir: Path = DEFAULT_OUTPUT_DIR) -> Path:
 
 class TTSRouter:
     """
-    Routes assistant response text to KinyaFlex (rw) or Piper (en/fr).
+    Routes assistant response text to KinyaFlex (rw) or Pocket TTS (en/fr).
     Backend engines are loaded lazily and cached.
     """
 
     def __init__(
         self,
-        default_speaker: int = 0,
         output_dir: Path = DEFAULT_OUTPUT_DIR,
         kinya_engine: Optional[KinyaFlexTTSEngine] = None,
-        piper_engine: Optional[PiperTTSEngine] = None,
+        pocket_engine: Optional[PocketTTSEngine] = None,
     ):
-        self.default_speaker = default_speaker
         self.output_dir = Path(output_dir)
-        self._kinya = kinya_engine or KinyaFlexTTSEngine(default_speaker=default_speaker)
-        self._piper = piper_engine or PiperTTSEngine()
+        self._kinya = kinya_engine or KinyaFlexTTSEngine()
+        self._pocket = pocket_engine or PocketTTSEngine()
 
     def check_models(self, language: str) -> dict:
         if language == "rw":
@@ -89,8 +87,8 @@ class TTSRouter:
                 "instructions": "python scripts/download_models.py --model tts",
             }
         if language in ("en", "fr"):
-            status = self._piper.check_voice_files(language)
-            status["engine"] = "piper"
+            status = self._pocket.check_voice_files(language)
+            status["engine"] = "pocket-tts"
             return status
         return {
             "language": language,
@@ -103,7 +101,6 @@ class TTSRouter:
         self,
         text: str,
         output_path: Optional[Union[str, Path]] = None,
-        speaker_id: Optional[int] = None,
         language: Optional[str] = None,
         check_lang: bool = True,
     ) -> Optional[str]:
@@ -133,20 +130,18 @@ class TTSRouter:
         else:
             output_file = Path(output_path)
 
-        engine_name = "KinyaFlex" if target_lang == "rw" else "Piper"
+        engine_name = "KinyaFlex" if target_lang == "rw" else "Pocket TTS"
         print(f"[TTS Router] Routing to {engine_name} for language '{target_lang}'...")
 
         try:
             if target_lang == "rw":
-                sid = self.default_speaker if speaker_id is None else speaker_id
                 result = self._kinya.synthesize_speech(
                     text,
                     output_path=output_file,
-                    speaker_id=sid,
                     check_lang=False,
                 )
             else:
-                result = self._piper.synthesize_speech(
+                result = self._pocket.synthesize_speech(
                     text,
                     language=target_lang,
                     output_path=output_file,

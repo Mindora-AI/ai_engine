@@ -1,6 +1,6 @@
 import wave
 from pathlib import Path
-from typing import Optional, Union
+from typing import Union
 
 from src.utils.language_detector import detect_language
 
@@ -8,6 +8,9 @@ from src.runtime.model_paths import resolve_kinya_flex_checkpoint
 
 DEFAULT_MODEL_PATH = resolve_kinya_flex_checkpoint()
 DEFAULT_SAMPLE_RATE = 24000
+
+# KinyaFlex speaker 0 (female default) — fixed implementation detail.
+KINYAFLEX_SPEAKER_ID = 0
 
 
 class KinyaFlexTTSEngine:
@@ -22,11 +25,9 @@ class KinyaFlexTTSEngine:
         self,
         model_path: Path = DEFAULT_MODEL_PATH,
         sample_rate: int = DEFAULT_SAMPLE_RATE,
-        default_speaker: int = 0,
     ):
         self.model_path = Path(model_path)
         self.sample_rate = sample_rate
-        self.default_speaker = default_speaker
         self._model = KinyaFlexTTSEngine._shared_model
         self._device = None
 
@@ -80,7 +81,6 @@ class KinyaFlexTTSEngine:
         self,
         text: str,
         output_path: Union[str, Path],
-        speaker_id: Optional[int] = None,
         check_lang: bool = True,
     ) -> str:
         """
@@ -96,9 +96,6 @@ class KinyaFlexTTSEngine:
                 raise ValueError(
                     "KinyaFlex TTS only supports reliable Kinyarwanda (rw) text."
                 )
-
-        if speaker_id is None:
-            speaker_id = self.default_speaker
 
         import numpy as np
         import torch
@@ -117,7 +114,7 @@ class KinyaFlexTTSEngine:
             raise ValueError("Text converted to empty KinyaFlex sequence.")
 
         with torch.no_grad():
-            audio_data = model(text_id_sequence, speaker_id)
+            audio_data = model(text_id_sequence, KINYAFLEX_SPEAKER_ID)
 
         audio = audio_data.detach().cpu().numpy()
         audio = np.squeeze(audio)

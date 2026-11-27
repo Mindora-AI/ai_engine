@@ -177,7 +177,6 @@ class MWIZERWAApiService:
         self,
         text: str,
         language: Optional[str] = None,
-        speaker_id: int = 0,
     ) -> Path:
         lang = (language or "rw").strip().lower()
         tts = self.get_tts()
@@ -193,7 +192,6 @@ class MWIZERWAApiService:
                     text,
                     output_path=out_path,
                     language=lang,
-                    speaker_id=speaker_id,
                     check_lang=False if language else True,
                 )
             if not wav or not Path(wav).is_file():
@@ -238,7 +236,6 @@ class MWIZERWAApiService:
         session_id: Optional[str] = None,
         mode: Optional[str] = None,
         language: Optional[str] = None,
-        speaker_id: int = 0,
         context: Optional[TurnContext] = None,
     ) -> Tuple[str, str, str, TurnResult, Optional[bytes], Optional[str]]:
         """ASR → chat → TTS. Chat runs once; TTS failure does not re-run chat."""
@@ -266,7 +263,6 @@ class MWIZERWAApiService:
                 wav_path = self.synthesize_tts(
                     result.response_text,
                     language=response_lang,
-                    speaker_id=speaker_id,
                 )
                 audio_bytes = wav_path.read_bytes()
             except Exception as e:

@@ -66,14 +66,8 @@ def main():
             run_assistant.run_text_mode(manager)
 
         elif choice == "2":
-            print("\nSelect Voice / Speaker for KinyaFlex TTS:")
-            print("  0. Female Voice 1 (default)")
-            print("  1. Female Voice 2")
-            print("  2. Male Voice")
-            spk_input = input("Speaker ID [0/1/2, default: 0] > ").strip()
-            speaker = int(spk_input) if spk_input in ["0", "1", "2"] else 0
             manager = run_assistant.ConversationManager()
-            run_assistant.run_text_voice_mode(manager, speaker_id=speaker)
+            run_assistant.run_text_voice_mode(manager)
 
         elif choice == "3":
             print(f"\nDo you want to test with the existing '{sample_audio}' or enter a path?")
@@ -85,20 +79,13 @@ def main():
             run_assistant.run_voice_text_mode(manager, audio_file=audio_file)
 
         elif choice == "4":
-            print("\nSelect Voice / Speaker for KinyaFlex TTS reply:")
-            print("  0. Female Voice 1 (default)")
-            print("  1. Female Voice 2")
-            print("  2. Male Voice")
-            spk_input = input("Speaker ID [0/1/2, default: 0] > ").strip()
-            speaker = int(spk_input) if spk_input in ["0", "1", "2"] else 0
-
             print(f"\nDo you want to test with the existing '{sample_audio}' or enter a path?")
             print(f"  1. Use existing sample: '{sample_audio}'")
             print("  2. Interactive mode (prompt for file path)")
             sub = input("Choice [1/2, default: 1] > ").strip()
             audio_file = sample_audio if sub != "2" else None
             manager = run_assistant.ConversationManager()
-            run_assistant.run_voice_mode(manager, audio_file=audio_file, speaker_id=speaker)
+            run_assistant.run_voice_mode(manager, audio_file=audio_file)
 
         elif choice == "5":
             print(f"\nRunning test_asr.py on '{sample_audio}'...")

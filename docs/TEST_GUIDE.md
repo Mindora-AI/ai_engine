@@ -22,7 +22,7 @@ Hands-on verification of every public HTTP endpoint **after** the API server is 
 | Core deps | `requirements.txt` |
 | API deps | `requirements-api.txt` |
 | Optional EN/FR ASR | `requirements-asr-whisper.txt` for `language=en` or `fr` on `/transcribe` and `/voice` |
-| KinyaFlex + Piper | TTS weights for `/tts` and `/voice` reply audio |
+| KinyaFlex + Pocket TTS | TTS for `/tts` and `/voice` reply audio |
 
 ### Start the server (local)
 
@@ -258,7 +258,6 @@ curl -s -X POST "%MWIZERWA_API_BASE%/tts" `
 curl -s -X POST "%MWIZERWA_API_BASE%/tts" `
   -F "text=Muraho" `
   -F "language=rw" `
-  -F "speaker_id=0" `
   -o smoke_tts_rw.wav
 ```
 
@@ -266,7 +265,7 @@ curl -s -X POST "%MWIZERWA_API_BASE%/tts" `
 
 1. **POST /tts**
 2. `text` = required string
-3. Optional `language`, `speaker_id` (0–2 for KinyaFlex)
+3. Optional `language` (`rw` / `en` / `fr`)
 4. Execute → **Download** response body
 
 ### Pass criteria
@@ -470,7 +469,7 @@ pytest tests/ -q
 |---------|--------|
 | **503** on `/chat` | `/health` → `engine_initialized` |
 | **503** EN/FR transcribe | `pip install -r requirements-asr-whisper.txt` |
-| **503** TTS | Piper/KinyaFlex paths under `MWIZERWA_MODELS_DIR` |
+| **503** TTS | KinyaFlex checkpoint under `MWIZERWA_MODELS_DIR`; `pip install pocket-tts` for EN/FR |
 | Slow first turn | Normal: GGUF + cold ASR/TTS |
 | Swagger upload fails | File under 25 MiB; use WAV |
 | **404** `/memory/consent` | Set `MWIZERWA_ENV=development` |

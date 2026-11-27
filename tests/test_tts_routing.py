@@ -12,8 +12,8 @@ from src.tts.tts_engine import (
     resolve_response_language,
 )
 from src.tts.tts_router import default_output_path, latest_response_path
-from src.tts.kinya_flex_engine import KinyaFlexTTSEngine
-from src.tts.piper_engine import PiperTTSEngine
+from src.tts.kinya_flex_engine import KinyaFlexTTSEngine, KINYAFLEX_SPEAKER_ID
+from src.tts.pocket_tts_engine import PocketTTSEngine
 from run_assistant import transcribe_and_respond
 
 
@@ -23,7 +23,7 @@ def _write_stub_wav(output_path) -> str:
     with wave.open(str(p), "wb") as wf:
         wf.setnchannels(1)
         wf.setsampwidth(2)
-        wf.setframerate(22050)
+        wf.setframerate(24000)
         wf.writeframes(b"\x00\x00" * 10)
     return str(p.resolve())
 
@@ -48,53 +48,56 @@ class TestTTSRouting(unittest.TestCase):
         with self.assertRaises(UnsupportedTTSLanguageError):
             resolve_response_language("123 456")
 
+    def test_kinya_flex_uses_speaker_zero_constant(self):
+        self.assertEqual(KINYAFLEX_SPEAKER_ID, 0)
+
     @patch.object(
         KinyaFlexTTSEngine,
         "synthesize_speech",
         side_effect=lambda text, output_path, **kw: _write_stub_wav(output_path),
     )
-    @patch.object(PiperTTSEngine, "synthesize_speech")
-    def test_router_rw_to_kinya(self, mock_piper, mock_kinya):
+    @patch.object(PocketTTSEngine, "synthesize_speech")
+    def test_router_rw_to_kinya(self, mock_pocket, mock_kinya):
         router = TTSRouter()
         out = router.synthesize_speech(
             "Muraho neza, umeze ute?",
             output_path=Path(tempfile.gettempdir()) / "rw_test.wav",
         )
         mock_kinya.assert_called_once()
-        mock_piper.assert_not_called()
+        mock_pocket.assert_not_called()
         self.assertTrue(Path(out).is_file())
 
     @patch.object(KinyaFlexTTSEngine, "synthesize_speech")
     @patch.object(
-        PiperTTSEngine,
+        PocketTTSEngine,
         "synthesize_speech",
         side_effect=lambda text, language, output_path: _write_stub_wav(output_path),
     )
-    def test_router_en_to_piper(self, mock_piper, mock_kinya):
+    def test_router_en_to_pocket(self, mock_pocket, mock_kinya):
         router = TTSRouter()
         out = router.synthesize_speech(
             "Hello, thank you for sharing that with me.",
             output_path=Path(tempfile.gettempdir()) / "en_test.wav",
         )
-        mock_piper.assert_called_once()
-        call_kw = mock_piper.call_args.kwargs
+        mock_pocket.assert_called_once()
+        call_kw = mock_pocket.call_args.kwargs
         self.assertEqual(call_kw["language"], "en")
         mock_kinya.assert_not_called()
         self.assertTrue(Path(out).is_file())
 
     @patch.object(KinyaFlexTTSEngine, "synthesize_speech")
     @patch.object(
-        PiperTTSEngine,
+        PocketTTSEngine,
         "synthesize_speech",
         side_effect=lambda text, language, output_path: _write_stub_wav(output_path),
     )
-    def test_router_fr_to_piper(self, mock_piper, mock_kinya):
+    def test_router_fr_to_pocket(self, mock_pocket, mock_kinya):
         router = TTSRouter()
         router.synthesize_speech(
             "Je suis là pour vous écouter avec attention.",
             output_path=Path(tempfile.gettempdir()) / "fr_test.wav",
         )
-        self.assertEqual(mock_piper.call_args.kwargs["language"], "fr")
+        self.assertEqual(mock_pocket.call_args.kwargs["language"], "fr")
         mock_kinya.assert_not_called()
 
     def test_language_switching_in_one_router_instance(self):
@@ -102,11 +105,11 @@ class TestTTSRouting(unittest.TestCase):
         mock_kinya = MagicMock(
             side_effect=lambda text, output_path, **kw: _write_stub_wav(output_path)
         )
-        mock_piper = MagicMock(
+        mock_pocket = MagicMock(
             side_effect=lambda text, language, output_path: _write_stub_wav(output_path)
         )
         router._kinya.synthesize_speech = mock_kinya
-        router._piper.synthesize_speech = mock_piper
+        router._pocket.synthesize_speech = mock_pocket
 
         out_dir = Path(tempfile.gettempdir())
         router.synthesize_speech("Muraho", output_path=out_dir / "a.wav")
@@ -114,34 +117,34 @@ class TestTTSRouting(unittest.TestCase):
         router.synthesize_speech("Bonjour", output_path=out_dir / "c.wav")
 
         self.assertEqual(mock_kinya.call_count, 1)
-        self.assertEqual(mock_piper.call_count, 2)
+        self.assertEqual(mock_pocket.call_count, 2)
 
-    def test_missing_piper_model_raises_clear_error(self):
-        piper = PiperTTSEngine(voices_root=Path(tempfile.gettempdir()) / "nonexistent_piper")
-        with self.assertRaises(FileNotFoundError) as ctx:
-            piper.synthesize_speech("Hello", language="en", output_path="x.wav")
-        self.assertIn("download_models.py", str(ctx.exception))
+    def test_missing_pocket_dependency_raises_clear_error(self):
+        pocket = PocketTTSEngine()
+        with patch.object(PocketTTSEngine, "check_voice_files", return_value={"present": False}):
+            with self.assertRaises(ImportError):
+                pocket.synthesize_speech("Hello", language="en", output_path="x.wav")
 
     def test_default_output_path_is_latest_response(self):
         path = default_output_path()
         self.assertEqual(path.name, "latest_response.wav")
 
-    def test_piper_writes_latest_response_by_default(self):
+    def test_pocket_writes_latest_response_by_default(self):
         with tempfile.TemporaryDirectory() as tmp:
             tmp_path = Path(tmp)
             unique = tmp_path / "response_en.wav"
             with wave.open(str(unique), "wb") as wf:
                 wf.setnchannels(1)
                 wf.setsampwidth(2)
-                wf.setframerate(22050)
+                wf.setframerate(24000)
                 wf.writeframes(b"\x00\x00" * 100)
 
-            def _fake_piper(text, language, output_path):
+            def _fake_pocket(text, language, output_path):
                 shutil.copy2(unique, output_path)
                 return str(output_path)
 
             router = TTSRouter(output_dir=tmp_path)
-            router._piper.synthesize_speech = _fake_piper
+            router._pocket.synthesize_speech = _fake_pocket
 
             with patch.object(KinyaFlexTTSEngine, "synthesize_speech") as mock_kinya:
                 router.synthesize_speech("Hello there, how are you today?")

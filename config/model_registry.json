@@ -38,42 +38,37 @@
       "license_note": "Follow C4IR-RW / KinyaFlex repository license."
     },
     {
-      "id": "piper-en",
-      "name": "Piper en_US-ljspeech-medium",
-      "format": "ONNX",
-      "approx_size_mb": 64,
-      "relative_path": "piper/en_US-ljspeech-medium",
+      "id": "pocket-tts-en",
+      "name": "Kyutai Pocket TTS (English)",
+      "format": "HuggingFace safetensors",
+      "relative_path": null,
       "source": {
         "type": "huggingface",
-        "repo_id": "rhasspy/piper-voices",
-        "files": [
-          "en/en_US/ljspeech/medium/en_US-ljspeech-medium.onnx",
-          "en/en_US/ljspeech/medium/en_US-ljspeech-medium.onnx.json"
-        ]
+        "repo_id": "kyutai/pocket-tts",
+        "config": "languages/english"
       },
-      "loader": "src.tts.piper_engine.PiperTTSEngine",
-      "gpu_capable": false,
+      "loader": "src.tts.pocket_tts_engine.PocketTTSEngine",
+      "voice_default": "anna",
+      "gpu_capable": true,
       "lazy_load": true,
-      "license_note": "rhasspy/piper-voices (see voice MODEL_CARD)."
+      "license_note": "Accept kyutai/pocket-tts terms on Hugging Face; weights download on first synthesis."
     },
     {
-      "id": "piper-fr",
-      "name": "Piper fr_FR-siwis-medium",
-      "format": "ONNX",
-      "approx_size_mb": 64,
-      "relative_path": "piper/fr_FR-siwis-medium",
+      "id": "pocket-tts-fr",
+      "name": "Kyutai Pocket TTS (French)",
+      "format": "HuggingFace safetensors",
+      "relative_path": null,
       "source": {
         "type": "huggingface",
-        "repo_id": "rhasspy/piper-voices",
-        "files": [
-          "fr/fr_FR/siwis/medium/fr_FR-siwis-medium.onnx",
-          "fr/fr_FR/siwis/medium/fr_FR-siwis-medium.onnx.json"
-        ]
+        "repo_id": "kyutai/pocket-tts",
+        "config": "languages/french"
       },
-      "loader": "src.tts.piper_engine.PiperTTSEngine",
-      "gpu_capable": false,
+      "loader": "src.tts.pocket_tts_engine.PocketTTSEngine",
+      "voice_default_env": "MWIZERWA_POCKET_FR_VOICE",
+      "voice_default": "estelle",
+      "gpu_capable": true,
       "lazy_load": true,
-      "license_note": "rhasspy/piper-voices (see voice MODEL_CARD)."
+      "license_note": "French voice estelle (override via MWIZERWA_POCKET_FR_VOICE)."
     },
     {
       "id": "asr",

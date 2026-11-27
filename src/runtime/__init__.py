@@ -7,7 +7,6 @@ from src.runtime.model_paths import (
     get_project_root,
     resolve_llm_gguf_path,
     resolve_kinya_flex_checkpoint,
-    resolve_piper_voices_root,
 )
 
 __all__ = [
@@ -17,5 +16,4 @@ __all__ = [
     "get_output_root",
     "resolve_llm_gguf_path",
     "resolve_kinya_flex_checkpoint",
-    "resolve_piper_voices_root",
 ]

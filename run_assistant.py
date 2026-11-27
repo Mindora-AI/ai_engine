@@ -59,7 +59,6 @@ def run_text_mode(engine: Union[ConversationEngine, ConversationManager]):
 
 def run_text_voice_mode(
     engine: Union[ConversationEngine, ConversationManager],
-    speaker_id: int = 0,
 ):
     """
     Runs text-to-voice mode:
@@ -67,7 +66,7 @@ def run_text_voice_mode(
     ASR is skipped entirely.
     """
     conv_engine = _ensure_engine(engine)
-    tts = TTSEngine(default_speaker=speaker_id)
+    tts = TTSEngine()
 
     print("\n" + "=" * 60)
     print("  Kinyarwanda Local Voice Assistant - Text-to-Voice Mode")
@@ -111,7 +110,7 @@ def run_text_voice_mode(
             continue
 
         # Step 2: Synthesize speech
-        print("[2/2] Synthesizing speech (KinyaFlex / Piper routing)...")
+        print("[2/2] Synthesizing speech (KinyaFlex / Pocket TTS routing)...")
         try:
             audio_output = tts.synthesize_speech(response)
             if audio_output:
@@ -129,7 +128,6 @@ def run_text_voice_mode(
 def run_voice_mode(
     engine: Union[ConversationEngine, ConversationManager],
     audio_file: str = None,
-    speaker_id: int = 0,
 ):
     """
     Runs voice mode pipeline:
@@ -143,7 +141,7 @@ def run_voice_mode(
 
     # Initialize ASR and TTS engines lazily
     asr = ASREngine()
-    tts = TTSEngine(default_speaker=speaker_id)
+    tts = TTSEngine()
 
     if audio_file:
         print(f"Processing audio file: {audio_file}")
@@ -270,7 +268,7 @@ def transcribe_and_respond(
         return
 
     if tts is not None:
-        print("[4/4] Synthesizing speech (KinyaFlex / Piper routing)...")
+        print("[4/4] Synthesizing speech (KinyaFlex / Pocket TTS routing)...")
         try:
             audio_output = tts.synthesize_speech(response)
             if audio_output:
@@ -289,7 +287,7 @@ def transcribe_and_respond(
 
 def main():
     parser = argparse.ArgumentParser(
-        description="Local Voice Assistant (ASR + AfriqueQwen + KinyaFlex/Piper TTS)"
+        description="Local Voice Assistant (ASR + AfriqueQwen + KinyaFlex/Pocket TTS)"
     )
     parser.add_argument(
         "--mode",
@@ -310,13 +308,6 @@ def main():
         default=None,
         help="Optional WAV file path for single-turn voice mode testing.",
     )
-    parser.add_argument(
-        "--speaker",
-        type=int,
-        default=0,
-        help="KinyaFlex speaker ID for Kinyarwanda responses (0=female_1, 1=female_2, 2=male). Default: 0",
-    )
-
     args = parser.parse_args()
 
     engine = ConversationEngine()
@@ -324,9 +315,9 @@ def main():
     if args.mode == "text":
         run_text_mode(engine)
     elif args.mode == "voice":
-        run_voice_mode(engine, audio_file=args.audio_file, speaker_id=args.speaker)
+        run_voice_mode(engine, audio_file=args.audio_file)
     elif args.mode == "text-voice":
-        run_text_voice_mode(engine, speaker_id=args.speaker)
+        run_text_voice_mode(engine)
     elif args.mode == "voice-text":
         run_voice_text_mode(engine, audio_file=args.audio_file)
 

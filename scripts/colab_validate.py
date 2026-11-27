@@ -24,16 +24,15 @@ from src.runtime.model_paths import (  # noqa: E402
     get_output_root,
     resolve_kinya_flex_checkpoint,
     resolve_llm_gguf_path,
-    resolve_piper_voices_root,
 )
+import importlib.util
 
 REQUIRED_ASSET_TESTS = frozenset(
     {
         "runtime_paths_configured",
         "llm_file_present",
         "kinya_checkpoint_present",
-        "piper_en_present",
-        "piper_fr_present",
+        "pocket_tts_present",
     }
 )
 REQUIRED_INFERENCE_TESTS = frozenset(
@@ -102,18 +101,13 @@ def run_validation() -> List[Dict[str, Any]]:
 
     llm_path = resolve_llm_gguf_path()
     kinya_path = resolve_kinya_flex_checkpoint()
-    piper_root = resolve_piper_voices_root()
+    pocket_ok = importlib.util.find_spec("pocket_tts") is not None
     record("llm_file_present", llm_path.is_file(), str(llm_path))
     record("kinya_checkpoint_present", kinya_path.is_file(), str(kinya_path))
     record(
-        "piper_en_present",
-        (piper_root / "en_US-ljspeech-medium" / "en_US-ljspeech-medium.onnx").is_file(),
-        str(piper_root),
-    )
-    record(
-        "piper_fr_present",
-        (piper_root / "fr_FR-siwis-medium" / "fr_FR-siwis-medium.onnx").is_file(),
-        str(piper_root),
+        "pocket_tts_present",
+        pocket_ok,
+        "pip install pocket-tts; weights download on first synthesis",
     )
 
     assets_ok = all(r["ok"] for r in results if r["test"] in REQUIRED_ASSET_TESTS)
@@ -242,7 +236,7 @@ def run_validation() -> List[Dict[str, Any]]:
         from scripts.colab_gradio import build_ui
 
         t0 = time.perf_counter()
-        build_ui(speaker_id=0)
+        build_ui()
         record("gradio_ui_build", True, "ConversationEngine + TTSEngine + ASREngine wired", time.perf_counter() - t0)
     except Exception as e:
         record("gradio_ui_build", False, str(e))

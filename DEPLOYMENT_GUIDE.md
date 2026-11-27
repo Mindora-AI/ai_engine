@@ -19,7 +19,7 @@ Your application
         → FastAPI (scripts/serve_api.py) in Colab
             → ConversationEngine (AfriqueQwen GGUF)
             → ASREngine (Kinyarwanda Health ASR; optional Whisper Small for en/fr)
-            → TTSEngine (KinyaFlex + Piper)
+            → TTSEngine (KinyaFlex + Pocket TTS)
 ```
 
 | Component | Role |
@@ -128,8 +128,8 @@ Interactive docs: `{BASE}/docs` · OpenAPI: `{BASE}/openapi.json`
 | Code | Language | Chat | TTS engine |
 |------|----------|------|------------|
 | `rw` | Kinyarwanda | Auto-detected per turn | KinyaFlex |
-| `en` | English | Auto-detected per turn | Piper |
-| `fr` | French | Auto-detected per turn | Piper |
+| `en` | English | Auto-detected per turn | Pocket TTS (`anna`) |
+| `fr` | French | Auto-detected per turn | Pocket TTS (`estelle`) |
 
 Optional `language` on `/chat` is a hint (`rw` / `en` / `fr`). TTS `/tts` may omit `language` to auto-detect from text.
 
@@ -211,7 +211,6 @@ Optional `language` on `/chat` is a hint (`rw` / `en` / `fr`). TTS `/tts` may om
 |-------|----------|------|
 | `text` | yes | string |
 | `language` | no | `rw` \| `en` \| `fr` |
-| `speaker_id` | no | int 0–2 (KinyaFlex speakers) |
 
 **Response (200):** `audio/wav` bytes (`Content-Disposition: attachment; filename="speech.wav"`).
 
@@ -252,7 +251,6 @@ Optional `language` on `/chat` is a hint (`rw` / `en` / `fr`). TTS `/tts` may om
 | `audio` | yes | file |
 | `session_id` | no | string (continue `/chat` session) |
 | `mode` | no | `gentle` \| `normal` \| `motivational` |
-| `speaker_id` | no | int 0–2 |
 
 **Example response (200)**
 
@@ -374,7 +372,7 @@ const wavBytes = await tts.arrayBuffer();
 | **422** | Invalid JSON or empty `user_text` | Fix client payload |
 | **413** | Audio too large | Shorter clip or raise `MWIZERWA_MAX_UPLOAD_BYTES` on server |
 | **503** on `/chat` | LLM not loaded | Wait for `/health`; check GGUF on Drive |
-| **503** on `/tts` / `/voice` | Missing KinyaFlex/Piper files | Run `download_models.py` on Colab |
+| **503** on `/tts` / `/voice` | Missing KinyaFlex checkpoint or `pocket-tts` | Run `download_models.py`; `pip install pocket-tts` |
 | **500** | Server error | Retry; if persistent, check Colab logs (not exposed in API body) |
 | Slow first `/transcribe` or `/voice` | ASR model download to HF cache | Warm up once; cache on Drive via `HF_HOME` |
 

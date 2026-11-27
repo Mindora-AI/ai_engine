@@ -20,9 +20,9 @@ def main() -> int:
         return 1
 
     data = json.loads(MANIFEST.read_text(encoding="utf-8"))
-    from src.tts.piper_engine import PiperTTSEngine
+    from src.tts.pocket_tts_engine import PocketTTSEngine
 
-    engine = PiperTTSEngine()
+    engine = PocketTTSEngine()
     root = MANIFEST.parent
     created = 0
     for clip in data.get("clips") or []:
@@ -37,7 +37,7 @@ def main() -> int:
         text = clip["reference_text"]
         status = engine.check_voice_files(lang)
         if not status.get("present"):
-            print(f"Missing Piper voice for {lang}: {status.get('instructions')}")
+            print(f"Pocket TTS not ready for {lang}: {status.get('instructions')}")
             return 1
         out.parent.mkdir(parents=True, exist_ok=True)
         engine.synthesize_speech(text, language=lang, output_path=out)

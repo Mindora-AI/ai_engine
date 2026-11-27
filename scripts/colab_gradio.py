@@ -19,9 +19,9 @@ from src.asr.asr_engine import ASREngine
 
 
 class MWIZERWAService:
-    def __init__(self, speaker_id: int = 0):
+    def __init__(self):
         self.engine = ConversationEngine()
-        self.tts = TTSEngine(default_speaker=speaker_id)
+        self.tts = TTSEngine()
         self.asr = ASREngine()
 
     def reset(self):
@@ -60,8 +60,8 @@ class MWIZERWAService:
             return f"[Voice Error] {e}", None
 
 
-def build_ui(speaker_id: int = 0) -> gr.Blocks:
-    svc = MWIZERWAService(speaker_id=speaker_id)
+def build_ui() -> gr.Blocks:
+    svc = MWIZERWAService()
     with gr.Blocks(title="MWIZERWA AI") as demo:
         gr.Markdown(
             "# MWIZERWA AI\nMultilingual companion (Kinyarwanda, English, French). "
@@ -88,8 +88,7 @@ def build_ui(speaker_id: int = 0) -> gr.Blocks:
 
 
 def main():
-    speaker = int(__import__("os").environ.get("MWIZERWA_SPEAKER_ID", "0"))
-    demo = build_ui(speaker_id=speaker)
+    demo = build_ui()
     demo.launch(share=False)
 
 

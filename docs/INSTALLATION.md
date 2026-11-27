@@ -29,7 +29,7 @@ This guide provides verified, step-by-step instructions for installing, configur
   - Model weights:
     - `AfriqueQwen3.5-4B-Instruct-v1` GGUF: **2.86 GB**
     - `KinyaFlex TTS` checkpoint: **1.03 GB**
-    - Piper voices (English + French): **~120 MB**
+    - Pocket TTS (EN/FR, Hugging Face cache on first use): **~hundreds of MB**
     - `ElvisTata2024/Kinyarwanda-Health-ASR` cache: **~0.95 GB**
   - Total minimum free disk space: **$\ge$ 10 GB**.
 - **GPU (Optional):** NVIDIA GPU with CUDA 12.x for accelerated inference. Default setup runs completely on CPU.
@@ -125,7 +125,7 @@ If you prefer installing dependencies step by step:
 MWIZERWA requires these local assets for full voice output:
 1. `models/afriqueqwen/AfriqueQwen3.5-4B-Instruct-v1.i1-Q4_K_M.gguf`
 2. `models/kinya-flex-tts/kinya_flex_tts_base_trained.pt`
-3. Piper ONNX bundles under `models/piper/` (English + French)
+3. `pocket-tts` Python package (English/French weights download from Hugging Face on first synthesis)
 
 ### 4.1 Automated Model Download (Windows PowerShell)
 
@@ -137,17 +137,7 @@ python scripts/download_models.py
 This downloads:
 - AfriqueQwen GGUF (`mradermacher/AfriqueQwen3.5-4B-Instruct-v1-i1-GGUF`)
 - KinyaFlex checkpoint (`C4IR-RW/kinya-flex-tts`)
-- Piper voices `en_US-ljspeech-medium` and `fr_FR-siwis-medium` from `rhasspy/piper-voices`
-
-Piper only:
-```powershell
-python scripts/download_models.py --model piper
-```
-
-Install Piper dependencies (included in `requirements.txt`):
-```powershell
-pip install piper-tts onnxruntime
-```
+EN/FR TTS uses **Pocket TTS** (`pip install pocket-tts`, already in `requirements.txt`). Accept [kyutai/pocket-tts](https://huggingface.co/kyutai/pocket-tts) terms on Hugging Face if prompted; weights cache under your HF home directory.
 
 ### 4.2 Verifying Model Integrity
 

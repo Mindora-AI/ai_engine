@@ -1,10 +1,9 @@
 """
 Public TTS entry point for MWIZERWA.
-TTSEngine is a thin facade over TTSRouter (KinyaFlex + Piper).
+TTSEngine is a thin facade over TTSRouter (KinyaFlex + Pocket TTS).
 """
 
 from pathlib import Path
-from typing import Optional, Union
 
 from src.tts.kinya_flex_engine import DEFAULT_MODEL_PATH, DEFAULT_SAMPLE_RATE
 from src.tts.tts_router import (
@@ -39,23 +38,21 @@ __all__ = [
 class TTSEngine(TTSRouter):
     """
     Multilingual TTS facade:
-    - Kinyarwanda (rw) -> KinyaFlex
-    - English (en) / French (fr) -> Piper
+    - Kinyarwanda (rw) -> KinyaFlex (speaker 0)
+    - English (en) / French (fr) -> Pocket TTS
     """
 
     def __init__(
         self,
         model_path: Path = DEFAULT_MODEL_PATH,
         sample_rate: int = DEFAULT_SAMPLE_RATE,
-        default_speaker: int = 0,
     ):
         from src.tts.kinya_flex_engine import KinyaFlexTTSEngine
 
         kinya = KinyaFlexTTSEngine(
             model_path=model_path,
             sample_rate=sample_rate,
-            default_speaker=default_speaker,
         )
-        super().__init__(default_speaker=default_speaker, kinya_engine=kinya)
+        super().__init__(kinya_engine=kinya)
         self.model_path = Path(model_path)
         self.sample_rate = sample_rate

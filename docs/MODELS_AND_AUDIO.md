@@ -38,8 +38,8 @@ MWIZERWA uses **two** synthesis engines selected automatically from the **final 
 | Response language | Engine | Voice / checkpoint |
 | :--- | :--- | :--- |
 | `rw` (Kinyarwanda) | KinyaFlex | `models/kinya-flex-tts/kinya_flex_tts_base_trained.pt` |
-| `en` (English) | Piper | `models/piper/en_US-ljspeech-medium/` |
-| `fr` (French) | Piper | `models/piper/fr_FR-siwis-medium/` |
+| `en` (English) | Pocket TTS | voice `anna` (HF weights on first use) |
+| `fr` (French) | Pocket TTS | voice `estelle` (`MWIZERWA_POCKET_FR_VOICE` to override) |
 
 Implementation: `src/tts/tts_router.py` (`TTSRouter`) exposed as `TTSEngine` in `src/tts/tts_engine.py`.
 
@@ -47,39 +47,19 @@ Implementation: `src/tts/tts_router.py` (`TTSRouter`) exposed as `TTSEngine` in 
 - **Architecture:** `FlexKinyaTTS` (Multi-Band iSTFT VITS2) via `DeepKIN-AgAI`.
 - **Checkpoint:** `models/kinya-flex-tts/kinya_flex_tts_base_trained.pt` (~1.03 GB).
 - **Audio format:** 24 kHz, 16-bit mono PCM WAV.
-- **Speakers:** `0` = female 1 (default), `1` = female 2, `2` = male.
+- **Speaker:** fixed internal ID `0` (not configurable via API).
 
-```powershell
-python run_assistant.py --mode text-voice --speaker 1
-```
-
-### 2.2 Piper (English / French)
-- **Runtime:** `piper-tts` Python package ([OHF-Voice/piper1-gpl](https://github.com/OHF-Voice/piper1-gpl)) with `onnxruntime`.
-- **Voices (Hugging Face `rhasspy/piper-voices`):**
-  - English: `en_US-ljspeech-medium` (22.05 kHz)
-  - French: `fr_FR-siwis-medium` (22.05 kHz)
-- **Expected layout:**
-
-```text
-models/piper/
-├── en_US-ljspeech-medium/
-│   ├── en_US-ljspeech-medium.onnx
-│   └── en_US-ljspeech-medium.onnx.json
-└── fr_FR-siwis-medium/
-    ├── fr_FR-siwis-medium.onnx
-    └── fr_FR-siwis-medium.onnx.json
-```
-
-Download:
-```powershell
-python scripts/download_models.py --model piper
-```
+### 2.2 Pocket TTS (English / French)
+- **Runtime:** `pocket-tts` ([Kyutai Pocket TTS](https://github.com/kyutai-labs/pocket-tts)).
+- **English:** predefined voice `anna`.
+- **French:** voice `estelle` (override with `MWIZERWA_POCKET_FR_VOICE` if needed).
+- **Install:** `pip install pocket-tts` (in `requirements.txt`). Weights download from Hugging Face on first synthesis.
 
 ### 2.3 Routing and safety
 1. `resolve_response_language()` runs `LanguageDetector` on the **assistant response text** (not the user message).
-2. Reliable `rw` → KinyaFlex; reliable `en` / `fr` → Piper.
+2. Reliable `rw` → KinyaFlex; reliable `en` / `fr` → Pocket TTS.
 3. Uncertain or unsupported languages raise `UnsupportedTTSLanguageError` — audio is **not** sent to the wrong engine.
-4. Default synthesis output is `outputs/tts_responses/latest_response.wav` (KinyaFlex and Piper). Pass `output_path` only for tests or custom locations.
+4. Default synthesis output is `outputs/tts_responses/latest_response.wav`. Pass `output_path` only for tests or custom locations.
 
 ---
 

@@ -20,7 +20,7 @@ This document serves as the shared architectural and integration reference for *
 | Area | Current State | Status |
 |---|---|---|
 | **Core Conversational Inference** | `ConversationEngine` + `AfriqueQwenLLM` + `ConversationManager` (RW/EN/FR) | **Implemented** |
-| **Speech Pipeline (ASR & TTS)** | Kinyarwanda Health ASR (`rw`); Whisper Small CPU int8 (`en`/`fr`); KinyaFlex (`rw`) / Piper (`en`, `fr`) TTS | **Implemented** |
+| **Speech Pipeline (ASR & TTS)** | Kinyarwanda Health ASR (`rw`); Whisper Small CPU int8 (`en`/`fr`); KinyaFlex (`rw`, speaker 0) / Pocket TTS (`en`, `fr`) | **Implemented** |
 | **Safety Guardrails (Gate 1 & Gate 2)** | Deterministic pre-inference crisis override & post-inference policy validation | **Implemented** |
 | **Context & Rolling Summaries** | Token-aware sliding window (`n_ctx=4096`, `max_tokens=768`) + LLM summarization | **Implemented** |
 | **Memory Proposal Extraction** | LLM-based extraction of candidate facts (`MemoryProposal`) | **Implemented** |
@@ -335,8 +335,8 @@ Defined in `src/api/app.py`, `src/api/schemas.py`, and `src/api/service.py`.
 
 #### `POST /transcribe`, `POST /tts`, `POST /voice`
 - `POST /transcribe`: Multipart `audio`, optional `language` (`rw`|`en`|`fr`, default `rw`). Response `{ "transcription", "language" }`. `rw` → Kinyarwanda Health ASR; `en`/`fr` → Whisper Small (`faster-whisper`, optional deps).
-- `POST /tts`: Form `text` (`str`), optional `language` (`rw`/`en`/`fr`), `speaker_id` (`0..2`) -> `audio/wav` binary response.
-- `POST /voice`: Multipart `audio` + form `session_id`, `mode`, optional `language` (same ASR routing as `/transcribe`, hint for chat), `speaker_id`, optional `context_json` -> `VoiceResponse` with `asr_language`, `audio_status`, `audio_error`, and `audio_base64` (nullable on TTS failure after successful chat).
+- `POST /tts`: Form `text` (`str`), optional `language` (`rw`/`en`/`fr`) -> `audio/wav` binary response.
+- `POST /voice`: Multipart `audio` + form `session_id`, `mode`, optional `language` (same ASR routing as `/transcribe`, hint for chat), optional `context_json` -> `VoiceResponse` with `asr_language`, `audio_status`, `audio_error`, and `audio_base64` (nullable on TTS failure after successful chat).
 
 **Trusted identity:** See **§8.3** for the full `user_id` contract (optional on `/chat`, never client-trusted, not available on `/voice`).
 
@@ -386,7 +386,7 @@ As responsibilities migrate to the backend and frontend, the AI engine must rema
 | **1. Unit Tests** | Test isolated AI modules without external services or real weights where appropriate. | `tests/test_language_detection.py`, `tests/test_safety_evaluator.py`, `tests/test_safety_guardrail.py`, `tests/test_assistant_policy.py`, `tests/test_response_contract.py`, `tests/test_token_context_management.py`, `tests/test_exercise_recommender.py` |
 | **2. Contract Tests** | Validate strict JSON schemas (`ParsedResponse`), Pydantic request/response validation, `PUBLIC_METADATA_KEYS` filtering, and error codes (`400`, `404`, `503`). | `tests/test_api.py`, `tests/test_response_contract.py` |
 | **3. Mock Integration Tests** | Test `ConversationEngine` and `MemoryCoordinator` using replaceable mock adapters (`InMemoryMemoryRepository`, `MockConsentGateway`, mocked LLM). Keeps dev harnesses separate from production adapters. | `tests/test_conversation_engine.py`, `tests/test_persistent_memory.py`, `tests/test_rolling_summary.py`, `tests/test_exercise_pipeline_integration.py` |
-| **4. End-to-End (E2E) Tests** | Exercise full HTTP/turn workflows (`/chat`, `/memory/consent`, `/tts`, `/voice`), safety overrides, and exercise recommendations. Distinguish **mocked-LLM E2E** (fast CI) from **real-inference E2E** (requires AfriqueQwen GGUF, optional faster-whisper, KinyaFlex/Piper weights). | `tests/test_api.py`, `tests/test_asr_routing.py`, `scripts/colab_validate.py` (real inference) |
+| **4. End-to-End (E2E) Tests** | Exercise full HTTP/turn workflows (`/chat`, `/memory/consent`, `/tts`, `/voice`), safety overrides, and exercise recommendations. Distinguish **mocked-LLM E2E** (fast CI) from **real-inference E2E** (requires AfriqueQwen GGUF, optional faster-whisper, KinyaFlex/Pocket TTS weights). | `tests/test_api.py`, `tests/test_asr_routing.py`, `scripts/colab_validate.py` (real inference) |
 
 **Running Tests:**
 ```bash
@@ -467,7 +467,8 @@ python scripts/serve_api.py
 | Variable | Purpose |
 |----------|---------|
 | `MWIZERWA_API_HOST` / `MWIZERWA_API_PORT` | Bind address (default `127.0.0.1:8000`) |
-| `MWIZERWA_MODELS_DIR` | GGUF, Piper, KinyaFlex checkpoints |
+| `MWIZERWA_MODELS_DIR` | GGUF, KinyaFlex checkpoints |
+| `MWIZERWA_POCKET_FR_VOICE` | French Pocket TTS voice (default `estelle`) |
 | `MWIZERWA_LLM_N_GPU_LAYERS` | LLM GPU offload (default `0` CPU) |
 | `MWIZERWA_MAX_UPLOAD_BYTES` | Audio upload cap (default 25 MiB) |
 | `MWIZERWA_WHISPER_MODEL` | Default `small` for EN/FR ASR |
@@ -475,7 +476,7 @@ python scripts/serve_api.py
 
 **Health:** `GET /health` returns `engine_initialized` (LLM loaded at startup) and `backends` readiness without loading ASR/TTS weights. Use before routing user traffic.
 
-**Artifacts:** AfriqueQwen Q4_K_M GGUF under `models/afriqueqwen/`; EN/FR Whisper Small via Hugging Face cache after first use; Piper voices under `models/piper/`; KinyaFlex under `models/kinya-flex-tts/`.
+**Artifacts:** AfriqueQwen Q4_K_M GGUF under `models/afriqueqwen/`; EN/FR Whisper Small and Pocket TTS weights via Hugging Face cache after first use; KinyaFlex under `models/kinya-flex-tts/`.
 
 ### 8.3. Authentication and trusted identity
 
@@ -499,7 +500,7 @@ When `user_id` is set, the engine may return `metadata.memory_proposals` for bac
 
 | Fact | Detail |
 |------|--------|
-| **Not implemented** | `/voice` does **not** accept `user_id` (multipart fields: `audio`, `session_id`, `mode`, `language`, `speaker_id`, `context_json` only). |
+| **Not implemented** | `/voice` does **not** accept `user_id` (multipart fields: `audio`, `session_id`, `mode`, `language`, `context_json` only). |
 | **Implication** | A voice turn cannot trigger the same trusted memory-proposal path as a `/chat` call with `user_id` in a single request. Session-scoped dialogue still advances via `session_id`. |
 | **Current integration pattern** | (A) Use `/voice` for modality only and accept no per-user memory proposals on that path; or (B) call `POST /transcribe`, then `POST /chat` with the transcript, trusted `user_id`, and full `context` (and optionally `POST /tts` for reply audio). |
 | **Future** | A `user_id` (or equivalent) on `/voice` is a possible contract extension—**not** shipped today. Do not assume voice memory support without backend-supplied `approved_memory_summary` in `context_json`. |
@@ -595,7 +596,7 @@ Serialization: `_inference_lock` and `_asr_lock` serialize heavy work in a **sin
 
 ### 8.12. Known limitations (honest status)
 
-- **Natural EN/FR ASR:** not validated on licensed conversational corpus (Common Voice fetch pending Hub auth). Synthetic Piper benchmarks only.
+- **Natural EN/FR ASR:** not validated on licensed conversational corpus (Common Voice fetch pending Hub auth). Synthetic TTS benchmarks (legacy Piper clips in manifest; regeneration uses Pocket TTS).
 - **Co-residency:** sequential LLM + Whisper measured locally (~4.5 GB peak RSS); **not** concurrent inference; not a production capacity sign-off.
 - **Backend:** no built-in authentication, durable sessions, or authoritative memory DB.
 - **Full app E2E:** requires backend + frontend not yet built.

@@ -142,8 +142,8 @@ class TestAssistantIntegration(unittest.TestCase):
         cleaned2 = clean_response(raw_text2)
         self.assertEqual(cleaned2, "Iyi ni Kinyarwanda.")
 
-    def test_09_english_routes_to_piper_not_kinya(self):
-        """9. English responses route to Piper via TTS router (not KinyaFlex skip)."""
+    def test_09_english_routes_to_pocket_not_kinya(self):
+        """9. English responses route to Pocket TTS via TTS router (not KinyaFlex)."""
         lang_en = detect_language("Hello, how are you doing today?")
         self.assertEqual(lang_en, "english")
 
@@ -152,17 +152,17 @@ class TestAssistantIntegration(unittest.TestCase):
         from pathlib import Path as P
         import wave
 
-        def _stub_piper(text, language, output_path):
+        def _stub_pocket(text, language, output_path):
             p = Path(output_path)
             p.parent.mkdir(parents=True, exist_ok=True)
             with wave.open(str(p), "wb") as wf:
                 wf.setnchannels(1)
                 wf.setsampwidth(2)
-                wf.setframerate(22050)
+                wf.setframerate(24000)
                 wf.writeframes(b"\x00\x00" * 10)
             return str(p.resolve())
 
-        engine._piper.synthesize_speech = MagicMock(side_effect=_stub_piper)
+        engine._pocket.synthesize_speech = MagicMock(side_effect=_stub_pocket)
         engine._kinya.synthesize_speech = MagicMock()
 
         out_path = P(gettempdir()) / "assistant_en.wav"
@@ -170,7 +170,7 @@ class TestAssistantIntegration(unittest.TestCase):
             "Hello, how are you today?",
             output_path=out_path,
         )
-        engine._piper.synthesize_speech.assert_called_once()
+        engine._pocket.synthesize_speech.assert_called_once()
         engine._kinya.synthesize_speech.assert_not_called()
         self.assertEqual(result, str(out_path.resolve()))
 
