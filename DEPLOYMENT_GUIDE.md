@@ -2,9 +2,12 @@
 
 **Repository:** [Mindora-AI/ai_engine](https://github.com/Mindora-AI/ai_engine)
 
-This guide is for developers building apps that call the **MWIZERWA inference HTTP API** when it is run from **Google Colab** and exposed via a **temporary ngrok tunnel**.
+This guide is for developers building apps that call the **MWIZERWA inference HTTP API**.
 
-It is **not** a guarantee of production uptime. Treat the ngrok URL as **ephemeral**.
+- **Local or server:** `pip install -r requirements-api.txt`, download models, `python scripts/serve_api.py` — see [README.md](README.md) and [INTEGRATION_GUIDE.md](INTEGRATION_GUIDE.md) §8.2.
+- **Colab + ngrok:** temporary public URL for demos; not a production SLA.
+
+Trusted identity and backend context: [INTEGRATION_GUIDE.md](INTEGRATION_GUIDE.md) §8.3. API field reference: [docs/API.md](docs/API.md).
 
 ---
 

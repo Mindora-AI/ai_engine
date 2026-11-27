@@ -1,6 +1,6 @@
 # MWIZERWA AI — Testing and Quality Assurance Guide
 
-MWIZERWA AI includes an automated test suite comprising **298 tests** across unit, integration, safety, exercise lifecycle, and behavioral evaluation suites.
+MWIZERWA AI includes an automated test suite (run `pytest tests/`) across unit, integration, safety, API contracts, exercise lifecycle, and behavioral evaluation suites.
 
 All test suites in `tests/` are designed for fast, deterministic, offline execution using mocked inference harnesses. No model weights or external network access are required to run the automated test suite.
 
@@ -39,13 +39,13 @@ tests/
 ## 2. Running Tests
 
 ### 2.1 Running the Complete Test Suite
-To discover and run all 298 tests:
+To discover and run the full suite:
 ```powershell
 python -m unittest discover tests
 ```
 *Expected Output:*
 ```text
-Ran 298 tests in ~14s
+pytest tests/ -q  (typically ~400+ tests in under a minute with mocks)
 OK
 ```
 
@@ -96,11 +96,12 @@ python -m unittest tests.behavioral.test_emotional_intent_fidelity.TestEmotional
 
 | Test Suite | Execution Target | Model Weights Required? | Network Required? | Typical Duration |
 | :--- | :--- | :---: | :---: | :---: |
-| `tests/*.py` | Unit / Pipeline Mocks | No | No | ~14 seconds |
-| `tests/behavioral/*.py` | Multi-Turn Mocks | No | No | ~14 seconds |
+| `tests/*.py` | Unit / API / integration mocks | No | No | ~1 minute |
+| `tests/behavioral/*.py` | Multi-turn behavioral mocks | No | No | included above |
+| `scripts/benchmark_whisper_asr.py` | Live Whisper (EN/FR) | Yes (`faster-whisper`) | First run may download HF weights | variable |
+| `scripts/benchmark_coreidency_llm_whisper.py` | Live LLM + Whisper (sequential) | Yes (GGUF + Whisper) | No | variable |
 | `scripts/validate_token_context_real_model.py` | Live GGUF Model | Yes (`AfriqueQwen`) | No | ~2-5 minutes |
 | `scripts/benchmark_cpu_threads.py` | Live GGUF Model | Yes (`AfriqueQwen`) | No | ~3-10 minutes |
-| `scripts/run_tts_baseline_evaluation.py` | Live KinyaFlex TTS | Yes (`KinyaFlex`) | No | ~1-3 minutes |
 
 ### Running Live Model Benchmarks (Optional)
 To test token budgeting against the real 3 GB `AfriqueQwen` GGUF:
@@ -116,7 +117,7 @@ python scripts/benchmark_cpu_threads.py
 
 ## 4. Interpreting Test Results and Troubleshooting Failures
 
-- **`Ran 298 tests ... OK`**: All regression boundaries, safety gates, and behavioral contracts are preserved.
+- **`429 passed`** (typical CI run with `pytest tests/`): Regression boundaries, API contracts, safety gates, and behavioral tests are preserved.
 - **`AssertionError: <ExerciseStatus.IN_PROGRESS> != <ExerciseStatus.COMPLETED>`**: Check step count for the exercise. `breathing_gentle_rhythm` has 4 steps (indices 0..3), requiring 4 continuation turns to complete.
 - **`ResponseParsingError: Missing required field 'interaction_intent'`**: The model output parser strictly rejects responses lacking required contract fields (`response_text`, `interaction_intent`, `requires_clarification`).
 - **`OversizedMessageError`**: The input user turn exceeds the token budget (`n_ctx - max_tokens - safety_margin`).

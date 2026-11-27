@@ -118,4 +118,4 @@ This document lists common issues, error messages, root causes, and verified res
   [ASR Warning] Transcription empty or silent.
   ```
 - **Cause:** **Expected Behavior.** These log lines originate from negative test cases in `test_token_context_management.py` and `test_conversation_engine.py` that intentionally verify error handling and state preservation during simulated failures.
-- **Resolution:** Look at the final summary line. If it concludes with `OK` (e.g. `Ran 298 tests in ~14s OK`), all tests have passed.
+- **Resolution:** Run `pytest tests/ -q`. A successful run ends with `passed` and exit code 0 (e.g. `429 passed`).

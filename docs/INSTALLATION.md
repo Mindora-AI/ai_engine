@@ -192,6 +192,6 @@ python -m unittest discover tests
 ```
 A successful installation will output:
 ```text
-Ran 298 tests in ~14s
+pytest tests/ -q  (mocked suite; expect hundreds of passes in under ~1 minute)
 OK
 ```

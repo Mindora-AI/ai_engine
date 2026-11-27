@@ -1,6 +1,6 @@
 # MWIZERWA Inference HTTP API
 
-**Backend handoff:** end-to-end integration (auth, context, memory, exercises, voice partial success, limitations) is in [INTEGRATION_GUIDE.md](../INTEGRATION_GUIDE.md) **§8**. This file is the endpoint reference; canonical schemas: `src/api/schemas.py`.
+**Backend handoff:** [INTEGRATION_GUIDE.md](../INTEGRATION_GUIDE.md) **§8**. **Manual testing:** [TEST_GUIDE.md](TEST_GUIDE.md). Canonical schemas: `src/api/schemas.py`.
 
 Serve with:
 
@@ -162,7 +162,17 @@ Optional `language` must be one of these codes (case-insensitive). Unsupported v
 
 ### Optional `user_id` (persistent memory)
 
-Supply only from a **trusted application backend** after authentication. When set, the engine may return `metadata.memory_proposals` for consent UI. Approved memory is injected into future turns; see [MEMORY.md](MEMORY.md).
+| | |
+|---|---|
+| **Required?** | **No.** Omit for standalone or anonymous server paths; conversation works without user-linked memory. |
+| **When set** | Non-empty string, max 128 characters (422 if blank/whitespace). |
+| **Trust model** | Supply only from a **trusted application backend** after authentication. The engine does not verify identity. **Never** pass a raw client-supplied id. |
+| **Application auth** | Engine optionality does not relax product requirements: memory, consent, and user-specific data flows **must** be authenticated in the backend. |
+| **Effect** | May return `metadata.memory_proposals`; approved memory is supplied on later turns via `context.approved_memory_summary`. See [MEMORY.md](MEMORY.md) and [INTEGRATION_GUIDE.md](../INTEGRATION_GUIDE.md) §8.3. |
+
+### `user_id` and `POST /voice`
+
+`/voice` does **not** accept `user_id`. For memory-aware voice, use `POST /transcribe` then `POST /chat` with trusted `user_id` and `context`, or supply approved memory only via `context_json` without proposals tied to voice-only paths. See INTEGRATION_GUIDE §8.3.
 
 ---
 

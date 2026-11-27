@@ -1,9 +1,14 @@
 # Virtual Environment
 .venv/
-.venv-asr312/
+.venv-*/
 venv/
 env/
 ENV/
+
+# Local secrets and env overrides
+.env
+.env.*
+!.env.example
 
 # Python Bytecode and Cache
 __pycache__/

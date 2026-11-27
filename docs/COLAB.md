@@ -67,6 +67,7 @@ Set by `scripts/colab_runtime.configure_drive_persistence()`.
 | 7 | `download_models.py --check` → download → `--check` again |
 | 8 | `colab_validate.py` (exit 0 required) |
 | 9 | `colab_gradio.py` only if validation passed |
+| 10 | HTTP API: pull `main`, `requirements-api.txt`, background `serve_api.py`, smoke tests — see `docs/TEST_GUIDE.md` |
 
 ## 5. Dependencies
 

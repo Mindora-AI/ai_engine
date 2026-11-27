@@ -126,7 +126,7 @@ The AI engine is strictly responsible for **intelligence, inference, and AI-leve
 
 ### B. Application Backend (External Service)
 The application backend owns **authoritative data, persistence, identity, and deterministic business rules**:
-- **User Identity & Authentication:** Authenticating users and supplying trusted `user_id` values to the AI engine (never trusting client-supplied IDs directly). (**Proposed**)
+- **User Identity & Authentication:** Authenticating users and supplying trusted `user_id` values to the AI engine (never trusting client-supplied IDs directly). The engine API keeps `user_id` **optional** on `/chat`; authentication is still **mandatory** in the application for memory-backed flows. (**Pending Integration** — engine boundary implemented, backend authority not yet built)
 - **Authoritative Session & History Persistence:** Managing session lifecycles, TTLs, and durable storage of conversation turns across devices/restarts. (**Proposed**)
 - **Persistent Memory & Consent Authority:** Storing pending memory proposals, capturing explicit user consent decisions, maintaining audit logs, supporting GDPR deletion, and persisting approved memory summaries (`MemoryRepository` & `ConsentGateway` implementations). (**Pending Integration**)
 - **Memory Context Supply:** Fetching approved user memory summaries and passing them into AI turn requests. (**Proposed**)
@@ -262,7 +262,7 @@ The AI engine already exposes protocol boundaries in `src/memory/repository.py` 
 
 ## 6. Integration Contracts
 
-For operational details on running and connecting to the FastAPI server (including Colab/ngrok discovery), refer to [DEPLOYMENT_GUIDE.md](file:///d:/Winner/DOCUMENTS/projects/kinyarwanda-tts-evaluation/DEPLOYMENT_GUIDE.md).
+For operational details on running and connecting to the FastAPI server (including Colab/ngrok discovery), refer to [DEPLOYMENT_GUIDE.md](DEPLOYMENT_GUIDE.md).
 
 ### 6.1. Existing HTTP Contracts (**Implemented**)
 Defined in `src/api/app.py`, `src/api/schemas.py`, and `src/api/service.py`.
@@ -338,7 +338,7 @@ Defined in `src/api/app.py`, `src/api/schemas.py`, and `src/api/service.py`.
 - `POST /tts`: Form `text` (`str`), optional `language` (`rw`/`en`/`fr`), `speaker_id` (`0..2`) -> `audio/wav` binary response.
 - `POST /voice`: Multipart `audio` + form `session_id`, `mode`, optional `language` (same ASR routing as `/transcribe`, hint for chat), `speaker_id`, optional `context_json` -> `VoiceResponse` with `asr_language`, `audio_status`, `audio_error`, and `audio_base64` (nullable on TTS failure after successful chat).
 
-**Trusted identity (Stage 4):** `user_id` on `/chat` must come from the **application backend** after authentication—not from unverified client input. Persistent memory consent remains server-owned.
+**Trusted identity:** See **§8.3** for the full `user_id` contract (optional on `/chat`, never client-trusted, not available on `/voice`).
 
 #### `POST /memory/consent` (**Temporary / Development Only**)
 - **Gate:** Returns `404` unless `MWIZERWA_ALLOW_DEV_MEMORY_CONSENT=1` or `MWIZERWA_ENV` is `development|dev|test|local`.
@@ -477,12 +477,36 @@ python scripts/serve_api.py
 
 **Artifacts:** AfriqueQwen Q4_K_M GGUF under `models/afriqueqwen/`; EN/FR Whisper Small via Hugging Face cache after first use; Piper voices under `models/piper/`; KinyaFlex under `models/kinya-flex-tts/`.
 
-### 8.3. Authentication and identity
+### 8.3. Authentication and trusted identity
 
-- **Backend** authenticates the user and resolves an authoritative internal user id.
-- **`user_id` on `POST /chat`** is accepted only as a **server-to-server** field. **Never** forward raw client-supplied ids without verification.
-- **`POST /voice`** does **not** accept `user_id` today. For memory-aware voice, backend should call `POST /chat` with transcript after ASR, or extend the contract in Stage 4.
-- Dev-only `InMemoryMemoryRepository` + `POST /memory/consent` simulate consent; they are **not** authoritative stores.
+The engine supports **standalone** operation (CLI, local API demos) and **backend-integrated** operation. These modes share the same HTTP contracts; what changes is who supplies trusted context.
+
+#### User identity contract (`POST /chat`)
+
+| Rule | Behavior |
+|------|----------|
+| **Optional field** | `user_id` is **not required**. Requests without it support ordinary conversation with no user-associated persistent memory proposals tied to a trusted store (dev in-memory hooks may still be disabled). |
+| **When present** | Must be a **valid, non-empty** identifier after trim (max 128 chars). Empty or whitespace → **422**. |
+| **No authentication in engine** | The engine does **not** authenticate users and does **not** decide whether an id is trustworthy. |
+| **Backend responsibility** | Authenticate the user, resolve the **authoritative** internal user id, and send it only on **server-to-server** calls to the engine. |
+| **Never trust the client** | Do **not** forward a raw `user_id` from an unauthenticated browser or mobile client. |
+| **Application auth** | Optional `user_id` on the engine API does **not** make authentication optional in the product. Any flow that uses memory proposals, consent, or user-specific approved memory **must** be gated by backend authentication. |
+| **Do not make `user_id` mandatory** | Do not require `user_id` on the engine API solely to force backend discipline—enforce identity in the backend instead. |
+
+When `user_id` is set, the engine may return `metadata.memory_proposals` for backend consent handling. Approved memory for inference should be supplied via `context.approved_memory_summary` from the backend’s durable store (see §8.7).
+
+#### Voice and identity (`POST /voice`)
+
+| Fact | Detail |
+|------|--------|
+| **Not implemented** | `/voice` does **not** accept `user_id` (multipart fields: `audio`, `session_id`, `mode`, `language`, `speaker_id`, `context_json` only). |
+| **Implication** | A voice turn cannot trigger the same trusted memory-proposal path as a `/chat` call with `user_id` in a single request. Session-scoped dialogue still advances via `session_id`. |
+| **Current integration pattern** | (A) Use `/voice` for modality only and accept no per-user memory proposals on that path; or (B) call `POST /transcribe`, then `POST /chat` with the transcript, trusted `user_id`, and full `context` (and optionally `POST /tts` for reply audio). |
+| **Future** | A `user_id` (or equivalent) on `/voice` is a possible contract extension—**not** shipped today. Do not assume voice memory support without backend-supplied `approved_memory_summary` in `context_json`. |
+
+#### Development-only identity and memory
+
+`InMemoryMemoryRepository`, `MockConsentGateway`, and `POST /memory/consent` simulate consent for local testing. They are **non-authoritative** and unsuitable for production persistence.
 
 ### 8.4. Text conversation (`POST /chat`)
 

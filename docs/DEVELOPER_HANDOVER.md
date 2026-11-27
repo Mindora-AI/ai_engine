@@ -1,12 +1,14 @@
 # MWIZERWA AI — Developer Handover and Engineering Guide
 
-This document provides a comprehensive handover for future software engineers and researchers maintaining and extending MWIZERWA AI without requiring external agent assistance.
+> **Backend integration:** For application handoff (identity, context, memory, exercises, voice, limitations), use **[INTEGRATION_GUIDE.md](../INTEGRATION_GUIDE.md) §8** as the primary reference. This document focuses on internal engineering invariants and extension rules.
+
+This document provides a handover for software engineers maintaining and extending MWIZERWA AI source code.
 
 ---
 
 ## 1. Executive Summary & Project Status
 
-MWIZERWA AI is a fully functional, offline-capable, multilingual supportive conversational companion equipped with multimodal voice capabilities (ASR, LLM, TTS), two-tier deterministic safety guardrails, and a deterministic wellness exercise subsystem.
+MWIZERWA AI is an offline-capable, multilingual supportive conversational companion with HTTP API, multimodal voice (ASR, LLM, TTS), two-tier safety guardrails, and wellness exercise recommendation intelligence. **Isolated AI-engine integration readiness** is complete; **application backend** (auth, durable sessions, production memory, exercise lifecycle) is out of scope in this repository.
 
 ### Completed Milestones
 - **Chunk 1 — Conversational Domain & Orchestration:** `ConversationEngine`, lightweight typed session state, and TurnRequest/TurnResult contracts.
@@ -14,12 +16,11 @@ MWIZERWA AI is a fully functional, offline-capable, multilingual supportive conv
 - **Chunk 3 — Tri-Lingual Language Detection:** Per-turn language detection (Kinyarwanda, English, French) with code-switching and false-positive protection.
 - **Chunk 4 — Two-Tier Safety Architecture:** Gate 1 pre-inference emergency overrides (suicide/crisis prevention) and Gate 2 post-inference assistant safety validation.
 - **Chunk 5 — Exercise Recommendation & Lifecycle Subsystem:** 5 static exercise categories (Breathing, Grounding, Reflection, Compassion, Gratitude), deterministic step sequencing, 5-turn unsolicited cooldown, and explicit request overrides.
-- **Chunk 6 — Behavioral Evaluation & Quality Assurance:** Comprehensive multi-turn behavioral evaluation suite in `tests/behavioral/` bringing test coverage to **298 passing tests**.
+- **Chunk 6 — Behavioral Evaluation & Quality Assurance:** Multi-turn behavioral suite in `tests/behavioral/`.
+- **HTTP API & integration contracts:** FastAPI surface, backend `context`, health backends, EN/FR Whisper ASR routing, integration guide — see `INTEGRATION_GUIDE.md`.
 
 ### Git State
-- **Active Branch:** `chunk-4-safety-implementation`
-- **Baseline Commit:** `b1efd56bb8c833166b224302c56ddb6769a89e66`
-- **Main Branch:** Untouched and preserved.
+- **Default branch:** `main` on [Mindora-AI/ai_engine](https://github.com/Mindora-AI/ai_engine) and [blessed-winner/MWIZERWA](https://github.com/blessed-winner/MWIZERWA).
 
 ---
 
